@@ -157,11 +157,11 @@ def download_files(service, app_name):
 
     if not files:
         print("No files found")
-        return 0
+        return False
 
     print(f"Found {len(files)} files, starting download")
 
-    output_dir = f"{app_name}"
+    output_dir = os.path.join("databases", "gdrive")
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
@@ -178,7 +178,7 @@ def download_files(service, app_name):
         modified_time = datetime.datetime.fromisoformat(file_item["modifiedTime"]).timestamp()
         os.utime(output_path, (modified_time, modified_time))
 
-    return 0
+    return True
 
 def browser_get_oauth_token(email=None):
     # if os.path.exists(".googleoauth") and not force:
@@ -196,7 +196,7 @@ def browser_get_oauth_token(email=None):
     driver.quit()
     return token
 
-def all(email):
+def download(email):
     auth = None
     if os.path.exists(".googleauth.json"):
         auths = json.load(open(".googleauth.json", "r"))
@@ -217,3 +217,12 @@ def all(email):
     json.dump(auths, open(".googleauth.json", "w"))
     service = get_gdrive_service(auths[email]["gdrive"])
     download_files(service, LINE_PKG)
+
+if __name__ == "__main__":
+    if len(sys.argv) > 2:
+        if sys.argv[1] == "download":
+            download(sys.argv[2])
+        else:
+            print("Usage:", sys.argv[0], "{download} ...\n  download [EMAIL]\n  Download LINE backup from Google Drive\n    EMAIL: Your Google Account Email")
+    else:
+        print("Usage:", sys.argv[0], "{download} ...\n  download [EMAIL]\n  Download LINE backup from Google Drive\n    EMAIL: Your Google Account Email")

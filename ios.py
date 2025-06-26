@@ -1,4 +1,5 @@
 import os
+import sys
 from pymobiledevice3.lockdown import create_using_usbmux
 from pymobiledevice3.services.mobilebackup2 import Mobilebackup2Service
 from pyiosbackup import Backup
@@ -21,4 +22,18 @@ def backup_device(backup_directory, pg=lambda x: None):
 def get_database(out):
     if not os.path.exists("iDeviceBackups"): os.mkdir("iDeviceBackups")
     bd = backup_device("iDeviceBackups")
-    backup_get_database(bd, out)
+    return backup_get_database(bd, out)
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "get_database":
+            print("Database saved to", get_database())
+        elif sys.argv[1] == "backup":
+            if len(sys.argv) > 2:
+                backup_device(sys.argv[2])
+            else:
+                backup_device(".")
+        else:
+            print("Usage:", sys.argv[0], "{get_database,backup} ...\n  get_database\n  Backup your device and get database\n\n  backup <DIR>\n  Backup your device\n    DIR: Backup directory")
+    else:
+        print("Usage:", sys.argv[0], "{get_database,backup} ...\n  get_database\n  Backup your device and get database\n\n  backup <DIR>\n  Backup your device\n    DIR: Backup directory")
