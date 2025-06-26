@@ -19,6 +19,9 @@ from selenium.webdriver import Keys, ActionChains
 from selenium.webdriver.support.ui import Select
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.options import Options
+import gzip
+import shutil
+import tempfile
 
 opt = webdriver.ChromeOptions()
 opt.add_argument("--disable-blink-features=AutomationControlled")
@@ -169,11 +172,20 @@ def download_files(service, app_name):
         print(f"Downloading file {file_item['name']} with id {file_item['id']}")
         req = service.files().get_media(fileId=file_item["id"])
         output_path = os.path.join(output_dir, f"{file_item['name']}")
-        with open(output_path, "wb") as f:
-            downloader = googleapiclient.http.MediaIoBaseDownload(f, req)
+        # 先下載到暫存檔
+        with tempfile.NamedTemporaryFile(delete=False) as tmp_f:
+            downloader = googleapiclient.http.MediaIoBaseDownload(tmp_f, req)
             done = False
-            while done is False:
+            while not done:
                 _status, done = downloader.next_chunk()
+            tmp_path = tmp_f.name
+
+        # 解壓縮gzip到output_path
+        with open(tmp_path, "rb") as f_in, open(output_path, "wb") as f_out:
+            with gzip.GzipFile(fileobj=f_in) as gz:
+                shutil.copyfileobj(gz, f_out)
+
+        os.remove(tmp_path)
 
         modified_time = datetime.datetime.fromisoformat(file_item["modifiedTime"]).timestamp()
         os.utime(output_path, (modified_time, modified_time))
