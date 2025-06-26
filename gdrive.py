@@ -161,7 +161,7 @@ def download_files(service, app_name):
 
     print(f"Found {len(files)} files, starting download")
 
-    output_dir = f"{app_name}-{int(time.time())}"
+    output_dir = f"{app_name}"
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
@@ -185,14 +185,14 @@ def browser_get_oauth_token(email=None):
     #     return open(".googleoauth", "r").read()
     driver = webdriver.Chrome(options=opt)
     if email:
-        driver.find_element(By.CSS_SELECTOR, "input[type=email]").send_keys(email, Keys.ENTERssssss)
+        driver.find_element(By.CSS_SELECTOR, "input[type=email]").send_keys(email, Keys.ENTER)
     while not driver.get_cookie("oauth_token"):
         time.sleep(.5)
     time.sleep(2)
     token = driver.get_cookie("oauth_token").get("value")
     print("Got OAuth Token")
-    print(token)
-    open(".googleoauth", "w").write(token)
+    # print(token)
+    # open(".googleoauth", "w").write(token)
     driver.quit()
     return token
 
@@ -207,12 +207,13 @@ def all(email):
     if not auth:
         oauthtoken = browser_get_oauth_token(email)
         mastertoken = get_master_token(oauthtoken)
-        gdrive_token = get_gdrive_access_token(email, mastertoken, LINE_PKG, LINE_SIG)
+        
         auths[email] = {
             "oauth": oauthtoken,
             "master": mastertoken,
-            "gdrive": gdrive_token,
+            "gdrive": None,
         }
+    auths[email]["gdrive"] = get_gdrive_access_token(email, auths[email]["master"], LINE_PKG, LINE_SIG)
     json.dump(auths, open(".googleauth.json", "w"))
     service = get_gdrive_service(auths[email]["gdrive"])
     download_files(service, LINE_PKG)
