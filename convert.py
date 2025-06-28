@@ -1,5 +1,22 @@
 import os
+import time
 import sqlite3
+
+# should i get square data idk
+
+IOS_UNIX_OFFSET = 978307200  # seconds
+
+def ts_android_to_ios(android_ts_ms):
+    """
+    Convert Android LINE timestamp (milliseconds) to iOS LINE timestamp (seconds since 2001-01-01)
+    """
+    return (android_ts_ms / 1000) - IOS_UNIX_OFFSET
+
+def ts_ios_to_android(ios_ts):
+    """
+    Convert iOS LINE timestamp (seconds since 2001-01-01) to Android LINE timestamp (milliseconds since 1970-01-01)
+    """
+    return int((ios_ts + IOS_UNIX_OFFSET) * 1000)
 
 def gdrive_database_init(db_path):
     if os.path.exists(db_path):
@@ -75,7 +92,6 @@ def gdrive_database_init(db_path):
             custom_reaction      TEXT,
             PRIMARY KEY (server_message_id, member_id)
         );''',
-        '''CREATE TABLE sqlite_sequence(name,seq);''',  # idk this
         '''INSERT INTO android_metadata (locale) VALUES ("en_US");'''
     ]
 
@@ -84,3 +100,245 @@ def gdrive_database_init(db_path):
 
     conn.commit()
     conn.close()
+
+
+def convert_zchat_to_chat(row, cursor, groups_cursor):
+    def clean(val):
+        if val is None:
+            return ""
+        val = str(val).strip()
+        return val if val else ""
+
+    msg_count = row["ZUNREAD"] or 0
+    mt = {0: 1, 1: 1, 2: 3}.get(row["ZTYPE"] or 0, 1)
+    zmid = clean(row["ZMID"])
+    name_row = None
+    if mt == 1:
+        name_row = cursor.execute("SELECT ZNAME FROM ZUSER WHERE ZMID = ?", (zmid,)).fetchone()
+    elif mt == 2:
+        name_row = groups_cursor.execute("SELECT ZNAME FROM ZUNIFIEDGROUP WHERE ZID = ?", (zmid,)).fetchone()
+
+    name = clean(name_row["ZNAME"]) if name_row else None
+
+    return {
+        "chat_id": zmid,
+        "chat_name": name,
+        # "owner_mid": "",
+        # "last_from_mid": "",
+        "last_message": clean(row["ZLASTMESSAGE"]),
+        "last_created_time": str(ts_ios_to_android(int(row["ZLASTUPDATED"]))) if row["ZLASTUPDATED"] else "0",
+        "message_count": msg_count,
+        "read_message_count": 0,
+        "latest_mentioned_position": 0,
+        "type": mt,
+        "is_notification": 1,
+        # "skin_key": clean(row["ZSKIN"]),
+        "input_text": clean(row["ZINPUTTEXT"]),
+        "input_text_metadata": "",
+        "last_message_display_time": str(int(time.time() * 1000)),
+        "is_archived": 0,
+        "read_up": str(row["ZREADUPTOMESSAGEID"] or ""),
+        "last_message_meta_data": "{}",
+        "chat_room_bgm_data": "",
+        "chat_room_should_show_bgm_badge": 0,
+    }
+
+def migrate_zchat_to_chat(ios_conn, group_conn, android_conn):
+    ios_cursor = ios_conn.cursor()
+    ios_cursor.row_factory = sqlite3.Row
+    group_cursor = group_conn.cursor()
+
+    android_cursor = android_conn.cursor()
+
+    ios_cursor.execute("SELECT * FROM ZCHAT")
+    count = 0
+    for row in ios_cursor.fetchall():
+        chat_row = convert_zchat_to_chat(row, ios_cursor, group_cursor)
+        if not chat_row:
+            continue
+        # 檢查 chat_id 是否已存在
+        android_cursor.execute("SELECT 1 FROM chat WHERE chat_id = ?", (chat_row["chat_id"],))
+        if android_cursor.fetchone():
+            continue  # 已存在則跳過
+        placeholders = ', '.join('?' for _ in chat_row)
+        columns = ', '.join(chat_row.keys())
+        sql = f"INSERT INTO chat ({columns}) VALUES ({placeholders})"
+        android_cursor.execute(sql, list(chat_row.values()))
+        count += 1
+
+    android_conn.commit()
+    print(f"✅ ZCHAT ➜ chat 匯入完成，共 {count} 筆")
+
+def convert_zmessage_to_chathistory(msg_row, chat_lookup, zuser_lookup):
+    def clean(val):
+        if val is None:
+            return ""
+        val = str(val).strip()
+        return val if val else ""
+
+    chat_id = chat_lookup.get(msg_row["ZCHAT"])
+    if not chat_id:
+        return None
+
+    sender_id = zuser_lookup.get(msg_row["ZSENDER"], None)
+
+    ts = int(msg_row["ZTIMESTAMP"]) if msg_row["ZTIMESTAMP"] else 0
+
+    return {
+        "server_id": str(msg_row["ZID"]),
+        "type": msg_row["ZMESSAGETYPE"],
+        "chat_id": chat_id,
+        "from_mid": sender_id,
+        "content": clean(msg_row["ZTEXT"]),
+        "created_time": str(ts),
+        "delivered_time": str(ts),
+        "status": 3,
+        "sent_count": 1,
+        "read_count": 1,
+        "location_name": None,
+        "location_address": None,
+        "location_phone": None,
+        "location_latitude": None,
+        "location_longitude": None,
+        "attachement_image": 0,
+        "attachement_image_height": None,
+        "attachement_image_width": None,
+        "attachement_image_size": None,
+        "attachement_type": 0,
+        "attachement_local_uri": None,
+        "parameter": "restored\ttrue",
+        "chunks": None
+    }
+
+def migrate_zmessage_to_chathistory(ios_conn, android_conn):
+    ios_cursor = ios_conn.cursor()
+    ios_cursor.row_factory = sqlite3.Row
+
+    android_cursor = android_conn.cursor()
+
+    # 擷取 ZMESSAGE
+    ios_cursor.execute("SELECT * FROM ZMESSAGE")
+    zmessage_rows = ios_cursor.fetchall()
+
+    # 使用新的 cursor 取得 lookup 資料，避免覆蓋主流程的 fetchall()
+    lookup_cursor = ios_conn.cursor()
+    lookup_cursor.row_factory = sqlite3.Row
+    chat_lookup = {row["Z_PK"]: row["ZMID"] for row in lookup_cursor.execute("SELECT Z_PK, ZMID FROM ZCHAT").fetchall()}
+    zuser_lookup = {row["Z_PK"]: row["ZMID"] for row in lookup_cursor.execute("SELECT Z_PK, ZMID FROM ZUSER").fetchall()}
+    # print(chat_lookup)
+
+    count = 0
+    for row in zmessage_rows:
+        # print("a")
+        msg = convert_zmessage_to_chathistory(row, chat_lookup, zuser_lookup)
+        if not msg:
+            # print("Skip")
+            continue
+
+        android_cursor.execute(
+            "SELECT content, from_mid FROM chat_history WHERE delivered_time = ?", (msg["delivered_time"],)
+        )
+        row_exist = android_cursor.fetchone()
+        if row_exist:
+            if row_exist[0] == msg["content"] and row_exist[1] == msg["from_mid"]:
+                print("Skip existed (same content)")
+                # print(msg)
+                continue  # 已存在且內容相同則跳過
+            else:
+                print("Same delivered_time but content differs, inserting anyway")
+
+        columns = ', '.join(msg.keys())
+        placeholders = ', '.join(['?'] * len(msg))
+        sql = f"INSERT INTO chat_history ({columns}) VALUES ({placeholders})"
+        android_cursor.execute(sql, list(msg.values()))
+        count += 1
+
+    android_conn.commit()
+    print(f"✅ ZMESSAGE ➜ chat_history 匯入完成，共 {count} 筆")
+
+REACTION_TYPE_MAP = {
+    2: "nice",
+    3: "love",
+    4: "fun",
+    5: "amazing",
+    6: "sad",
+    7: "omg",
+}
+
+def convert_zreaction_to_reaction(row):
+    def clean(val):
+        if val is None:
+            return None
+        val = str(val).strip()
+        return val if val else None
+
+    reaction_type = REACTION_TYPE_MAP.get(row["ZREACTIONTYPE"], "unknown")
+
+    if clean(row["ZCUSTOMREACTION"]):
+        return
+
+    return {
+        "server_message_id": int(row["ZMESSAGEID"]),
+        "member_id": clean(row["ZREACTORMID"]),
+        "chat_id": clean(row["ZCHATMID"]),
+        "reaction_time_millis": int(float(row["ZCREATEDAT"]) * 1000),
+        "reaction_type": reaction_type,
+        "custom_reaction": clean(row["ZCUSTOMREACTION"])
+    }
+
+def migrate_zreaction_to_reactions(message_ext_conn, android_conn):
+    cursor = message_ext_conn.cursor()
+    cursor.row_factory = sqlite3.Row
+    dest = android_conn.cursor()
+
+    cursor.execute("SELECT * FROM ZMESSAGEREACTION")
+    rows = cursor.fetchall()
+
+    count = 0
+    for row in rows:
+        data = convert_zreaction_to_reaction(row)
+        if data is None:
+            continue
+
+        # 檢查是否已存在相同的 server_message_id 和 member_id
+        dest.execute(
+            "SELECT 1 FROM reactions WHERE server_message_id = ? AND member_id = ?",
+            (data["server_message_id"], data["member_id"])
+        )
+        if dest.fetchone():
+            continue  # 已存在則跳過
+
+        columns = ", ".join(data.keys())
+        placeholders = ", ".join(["?"] * len(data))
+        sql = f"INSERT INTO reactions ({columns}) VALUES ({placeholders})"
+        dest.execute(sql, list(data.values()))
+        count += 1
+
+    android_conn.commit()
+    print(f"✅ 已成功轉換 {count} 筆 reaction 資料")
+
+def migrate_all_ios_to_android(ios_folder, android_db_path):
+    """
+    ios_folder: 包含 Line.sqlite, Group.sqlite, MessageExt.sqlite 的資料夾路徑
+    android_db_path: 目標 Android 資料庫檔案路徑
+    """
+    ios_conn = sqlite3.connect(os.path.join(ios_folder, "Line.sqlite"))
+    group_conn = sqlite3.connect(os.path.join(ios_folder, "Group.sqlite"))
+    message_ext_conn = sqlite3.connect(os.path.join(ios_folder, "MessageExt.sqlite"))
+    if not os.path.exists(android_db_path):
+        gdrive_database_init(android_db_path)
+        print("✅ 已成功創建 Google Drive 備份範本")
+    android_conn = sqlite3.connect(android_db_path)
+
+    # chat
+    migrate_zchat_to_chat(ios_conn, group_conn, android_conn)
+    # message
+    migrate_zmessage_to_chathistory(sqlite3.connect(os.path.join(ios_folder, "Line.sqlite")), android_conn)
+    # reaction
+    migrate_zreaction_to_reactions(message_ext_conn, android_conn)
+
+    # close all
+    ios_conn.close()
+    group_conn.close()
+    message_ext_conn.close()
+    android_conn.close()
