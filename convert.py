@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import time
+import argparse
 
 IOS_UNIX_OFFSET = 978307200
 
@@ -321,7 +322,7 @@ def migrate_all_ios_to_android(ios_folder, android_db_path):
     android_db_path: 目標 Android 資料庫檔案路徑
     """
     ios_conn = sqlite3.connect(os.path.join(ios_folder, "Line.sqlite"))
-    group_conn = sqlite3.connect(os.path.join(ios_folder, "Group.sqlite"))
+    group_conn = sqlite3.connect(os.path.join(ios_folder, "UnifiedGroup.sqlite"))
     message_ext_conn = sqlite3.connect(os.path.join(ios_folder, "MessageExt.sqlite"))
     if not os.path.exists(android_db_path):
         gdrive_database_init(android_db_path)
@@ -341,35 +342,55 @@ def migrate_all_ios_to_android(ios_folder, android_db_path):
     message_ext_conn.close()
     android_conn.close()
 
-def convert_chat_to_zchat(row):
+def convert_chat_to_zchat(row, z_ent):
     return {
+        "Z_ENT": z_ent,
+        "ZALERT": 1,
+        "ZE2EECONTENTTYPES": 0,
+        "ZENABLE": 1,
+        "ZLASTRECEIVEDMESSAGEID": int(row["read_up"]) if row["read_up"] else 0,
+        "ZLIVE": 0,
         "ZMID": clean(row["chat_id"]),
         "ZLASTMESSAGE": clean(row["last_message"]),
         "ZLASTUPDATED": ts_android_to_ios(int(row["last_created_time"])) if row["last_created_time"] else 0,
         "ZREADUPTOMESSAGEID": int(row["read_up"]) if row["read_up"] else 0,
+        "ZREADUPTOMESSAGEIDSYNCED": int(row["read_up"]) if row["read_up"] else 0,
+        "ZSESSIONID": 0,
+        "ZSORTORDER": 0,
+        "ZMETADATA": 0,  # todo
+        "ZEXPIREINTERVAL": 0.0,
         "ZUNREAD": row["message_count"] or 0,
         "ZINPUTTEXT": clean(row["input_text"]),
         "ZTYPE": {1: 0, 3: 2}.get(row["type"], 1),
         "ZSKIN": clean(row["skin_key"])
     }
 
-def convert_chathistory_to_zmessage(row, chat_lookup, zuser_lookup):
+def convert_chathistory_to_zmessage(row, chat_lookup, zuser_lookup, z_ent=5):
     chat_pk = chat_lookup.get(row["chat_id"])
     sender_pk = zuser_lookup.get(row["from_mid"])
     if chat_pk is None:
         return None
     sid = row["server_id"]
     sid = int(sid) if sid else None
+    zt = clean(row["content"])
+    zt = "\t" if not zt else zt
     return {
         "ZID": sid,
         "ZCHAT": chat_pk,
         "ZSENDER": sender_pk,
-        "ZTEXT": clean(row["content"]),
+        "ZTEXT": zt,
         "ZTIMESTAMP": int(row["created_time"]),
-        "ZMESSAGETYPE": row["type"]
+        # "ZMESSAGETYPE": row["type"],
+        "ZCONTENTTYPE": 0,  # 0 = text other todo
+        "Z_OPT": 1,  # todo
+        "Z_ENT": z_ent,
+        "ZREADCOUNT": 0,
+        "ZSENDSTATUS": 1,
+        "ZLATITUDE": 0.0,
+        "ZLONGITUDE": 0.0,
     }
 
-def convert_reactions_to_zreaction(row):
+def convert_reactions_to_zreaction(row, z_ent=2):
     TYPE_MAP_REVERSE = {
         "nice": 2,
         "love": 3,
@@ -379,6 +400,8 @@ def convert_reactions_to_zreaction(row):
         "omg": 7,
     }
     return {
+        "Z_ENT": z_ent,
+        "Z_OPT": 1,
         "ZMESSAGEID": row["server_message_id"],
         "ZREACTORMID": clean(row["member_id"]),
         "ZCHATMID": clean(row["chat_id"]),
@@ -389,7 +412,7 @@ def convert_reactions_to_zreaction(row):
 
 def migrate_android_to_ios(android_db_path, ios_folder):
     ios_line = sqlite3.connect(os.path.join(ios_folder, "Line.sqlite"))
-    group = sqlite3.connect(os.path.join(ios_folder, "Group.sqlite"))
+    group = sqlite3.connect(os.path.join(ios_folder, "UnifiedGroup.sqlite"))
     message_ext = sqlite3.connect(os.path.join(ios_folder, "MessageExt.sqlite"))
     android = sqlite3.connect(android_db_path)
 
@@ -407,9 +430,12 @@ def migrate_android_to_ios(android_db_path, ios_folder):
     chat_lookup = {row["ZMID"]: row["Z_PK"] for row in ios_cursor.execute("SELECT Z_PK, ZMID FROM ZCHAT")}
 
     # chat
+    ios_cursor.execute("SELECT * FROM Z_PRIMARYKEY WHERE Z_NAME = 'Chat'")
+    z_pk_row = ios_cursor.fetchone()
+    z_ent = z_pk_row["Z_ENT"] if z_pk_row else 0
     count = 0
     for row in android_cursor.execute("SELECT * FROM chat"):
-        data = convert_chat_to_zchat(row)
+        data = convert_chat_to_zchat(row, z_ent)
         if not data or not data["ZMID"]:
             continue
         if data["ZMID"] in chat_lookup:
@@ -420,12 +446,25 @@ def migrate_android_to_ios(android_db_path, ios_folder):
         ios_cursor.execute(sql, list(data.values()))
         count += 1
     ios_line.commit()
+
+    # 更新 Z_PRIMARYKEY 的 Z_MAX
+    ios_cursor.execute("SELECT MAX(Z_PK) FROM ZCHAT LIMIT 1")
+    max_zpk = ios_cursor.fetchone()[0]
+    if max_zpk is not None:
+        ios_cursor.execute(
+            "UPDATE Z_PRIMARYKEY SET Z_MAX = ? WHERE Z_NAME = 'Chat'",
+            (max_zpk,)
+        )
+        ios_line.commit()
     print(f"✅ chat ➜ ZCHAT 匯入完成，共 {count} 筆")
 
     # chat_history
+    ios_cursor.execute("SELECT * FROM Z_PRIMARYKEY WHERE Z_NAME = 'Message'")
+    z_pk_row = ios_cursor.fetchone()
+    z_ent = z_pk_row["Z_ENT"] if z_pk_row else 0
     count = 0
     for row in android_cursor.execute("SELECT * FROM chat_history"):
-        data = convert_chathistory_to_zmessage(row, chat_lookup, user_lookup)
+        data = convert_chathistory_to_zmessage(row, chat_lookup, user_lookup, z_ent)
         if not data:
             continue
         placeholders = ', '.join(['?'] * len(data))
@@ -434,12 +473,24 @@ def migrate_android_to_ios(android_db_path, ios_folder):
         ios_cursor.execute(sql, list(data.values()))
         count += 1
     ios_line.commit()
+    # 更新 Z_PRIMARYKEY 的 Z_MAX
+    ios_cursor.execute("SELECT MAX(Z_PK) FROM ZMESSAGE LIMIT 1")
+    max_zpk = ios_cursor.fetchone()[0]
+    if max_zpk is not None:
+        ios_cursor.execute(
+            "UPDATE Z_PRIMARYKEY SET Z_MAX = ? WHERE Z_NAME = 'Message'",
+            (max_zpk,)
+        )
+        ios_line.commit()
     print(f"✅ chat_history ➜ ZMESSAGE 匯入完成，共 {count} 筆")
 
     # reactions
+    msgext_cursor.execute("SELECT Z_ENT FROM Z_PRIMARYKEY WHERE Z_NAME = 'MessageReaction'")
+    z_pk_row = msgext_cursor.fetchone()
+    z_ent = z_pk_row[0] if z_pk_row else 0
     count = 0
     for row in android_cursor.execute("SELECT * FROM reactions"):
-        data = convert_reactions_to_zreaction(row)
+        data = convert_reactions_to_zreaction(row, z_ent)
         if not data:
             continue
         placeholders = ', '.join(['?'] * len(data))
@@ -448,6 +499,15 @@ def migrate_android_to_ios(android_db_path, ios_folder):
         msgext_cursor.execute(sql, list(data.values()))
         count += 1
     message_ext.commit()
+    # 更新 Z_PRIMARYKEY 的 Z_MAX
+    msgext_cursor.execute("SELECT MAX(Z_PK) FROM ZMESSAGEREACTION LIMIT 1")
+    max_zpk = msgext_cursor.fetchone()[0]
+    if max_zpk is not None:
+        msgext_cursor.execute(
+            "UPDATE Z_PRIMARYKEY SET Z_MAX = ? WHERE Z_NAME = 'MessageReaction'",
+            (max_zpk,)
+        )
+        message_ext.commit()
     print(f"✅ reactions ➜ ZMESSAGEREACTION 匯入完成，共 {count} 筆")
 
     # 關閉資料庫
@@ -455,3 +515,27 @@ def migrate_android_to_ios(android_db_path, ios_folder):
     group.close()
     message_ext.close()
     android.close()
+
+def main():
+    parser = argparse.ArgumentParser(description="iOS/Android LINE 資料庫轉換工具")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # iOS ➜ Android
+    parser_ios2android = subparsers.add_parser("ios2android", help="iOS 轉 Android")
+    parser_ios2android.add_argument("ios_folder", help="iOS 資料夾 (需含 Line.sqlite, Group.sqlite, MessageExt.sqlite)")
+    parser_ios2android.add_argument("android_db", help="輸出 Android 資料庫檔案路徑")
+
+    # Android ➜ iOS
+    parser_android2ios = subparsers.add_parser("android2ios", help="Android 轉 iOS")
+    parser_android2ios.add_argument("android_db", help="Android 資料庫檔案路徑")
+    parser_android2ios.add_argument("ios_folder", help="輸出 iOS 資料夾 (需含 Line.sqlite, Group.sqlite, MessageExt.sqlite)")
+
+    args = parser.parse_args()
+
+    if args.command == "ios2android":
+        migrate_all_ios_to_android(args.ios_folder, args.android_db)
+    elif args.command == "android2ios":
+        migrate_android_to_ios(args.android_db, args.ios_folder)
+
+if __name__ == "__main__":
+    main()

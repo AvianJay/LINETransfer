@@ -13,7 +13,7 @@ def backup_get_database(path, output):
     dbf = backup.get_entry_by_domain_and_path("AppDomainGroup-group.com.linecorp.line", f"Library/Application Support/PrivateStore/{id}/Messages/Line.sqlite")
     open(os.path.join(output, "Line.sqlite"), "wb").write(dbf.read_raw())
     gdbf = backup.get_entry_by_domain_and_path("AppDomainGroup-group.com.linecorp.line", f"Library/Application Support/PrivateStore/{id}/Messages/UnifiedGroup.sqlite")
-    open(os.path.join(output, "Group.sqlite"), "wb").write(gdbf.read_raw()) # idk should i change to original
+    open(os.path.join(output, "UnifiedGroup.sqlite"), "wb").write(gdbf.read_raw())
     medbf = backup.get_entry_by_domain_and_path("AppDomainGroup-group.com.linecorp.line", f"Library/Application Support/PrivateStore/{id}/Messages/MessageExt.sqlite")
     open(os.path.join(output, "MessageExt.sqlite"), "wb").write(medbf.read_raw())
     return output
