@@ -2,3 +2,5 @@ google-api-python-client==2.159.0
 oauth2client==4.1.3
 pymobiledevice3
 pyiosbackup
+selenium~=4.34.0
+flet[all]==0.27.6
