@@ -1,4 +1,13 @@
 import os
+import sqlite3
+import time
+
+IOS_UNIX_OFFSET = 978307200
+
+def ts_android_to_ios(android_ts_ms):
+    return (android_ts_ms / 1000) - IOS_UNIX_OFFSET
+
+import os
 import time
 import sqlite3
 
@@ -17,6 +26,13 @@ def ts_ios_to_android(ios_ts):
     Convert iOS LINE timestamp (seconds since 2001-01-01) to Android LINE timestamp (milliseconds since 1970-01-01)
     """
     return int((ios_ts + IOS_UNIX_OFFSET) * 1000)
+
+
+def clean(val):
+    if val is None:
+        return None
+    val = str(val).strip()
+    return val if val else None
 
 def gdrive_database_init(db_path):
     if os.path.exists(db_path):
@@ -103,12 +119,6 @@ def gdrive_database_init(db_path):
 
 
 def convert_zchat_to_chat(row, cursor, groups_cursor):
-    def clean(val):
-        if val is None:
-            return ""
-        val = str(val).strip()
-        return val if val else ""
-
     msg_count = row["ZUNREAD"] or 0
     mt = {0: 1, 1: 1, 2: 3}.get(row["ZTYPE"] or 0, 1)
     zmid = clean(row["ZMID"])
@@ -170,12 +180,6 @@ def migrate_zchat_to_chat(ios_conn, group_conn, android_conn):
     print(f"✅ ZCHAT ➜ chat 匯入完成，共 {count} 筆")
 
 def convert_zmessage_to_chathistory(msg_row, chat_lookup, zuser_lookup):
-    def clean(val):
-        if val is None:
-            return ""
-        val = str(val).strip()
-        return val if val else ""
-
     chat_id = chat_lookup.get(msg_row["ZCHAT"])
     if not chat_id:
         return None
@@ -266,12 +270,6 @@ REACTION_TYPE_MAP = {
 }
 
 def convert_zreaction_to_reaction(row):
-    def clean(val):
-        if val is None:
-            return None
-        val = str(val).strip()
-        return val if val else None
-
     reaction_type = REACTION_TYPE_MAP.get(row["ZREACTIONTYPE"], "unknown")
 
     if clean(row["ZCUSTOMREACTION"]):
@@ -342,3 +340,118 @@ def migrate_all_ios_to_android(ios_folder, android_db_path):
     group_conn.close()
     message_ext_conn.close()
     android_conn.close()
+
+def convert_chat_to_zchat(row):
+    return {
+        "ZMID": clean(row["chat_id"]),
+        "ZLASTMESSAGE": clean(row["last_message"]),
+        "ZLASTUPDATED": ts_android_to_ios(int(row["last_created_time"])) if row["last_created_time"] else 0,
+        "ZREADUPTOMESSAGEID": int(row["read_up"]) if row["read_up"] else 0,
+        "ZUNREAD": row["message_count"] or 0,
+        "ZINPUTTEXT": clean(row["input_text"]),
+        "ZTYPE": {1: 0, 3: 2}.get(row["type"], 1),
+        "ZSKIN": clean(row["skin_key"])
+    }
+
+def convert_chathistory_to_zmessage(row, chat_lookup, zuser_lookup):
+    chat_pk = chat_lookup.get(row["chat_id"])
+    sender_pk = zuser_lookup.get(row["from_mid"])
+    if chat_pk is None:
+        return None
+    sid = row["server_id"]
+    sid = int(sid) if sid else None
+    return {
+        "ZID": sid,
+        "ZCHAT": chat_pk,
+        "ZSENDER": sender_pk,
+        "ZTEXT": clean(row["content"]),
+        "ZTIMESTAMP": int(row["created_time"]),
+        "ZMESSAGETYPE": row["type"]
+    }
+
+def convert_reactions_to_zreaction(row):
+    TYPE_MAP_REVERSE = {
+        "nice": 2,
+        "love": 3,
+        "fun": 4,
+        "amazing": 5,
+        "sad": 6,
+        "omg": 7,
+    }
+    return {
+        "ZMESSAGEID": row["server_message_id"],
+        "ZREACTORMID": clean(row["member_id"]),
+        "ZCHATMID": clean(row["chat_id"]),
+        "ZREACTIONTYPE": TYPE_MAP_REVERSE.get(row["reaction_type"], 0),
+        "ZCREATEDAT": row["reaction_time_millis"] / 1000.0,
+        "ZCUSTOMREACTION": clean(row["custom_reaction"])
+    }
+
+def migrate_android_to_ios(android_db_path, ios_folder):
+    ios_line = sqlite3.connect(os.path.join(ios_folder, "Line.sqlite"))
+    group = sqlite3.connect(os.path.join(ios_folder, "Group.sqlite"))
+    message_ext = sqlite3.connect(os.path.join(ios_folder, "MessageExt.sqlite"))
+    android = sqlite3.connect(android_db_path)
+
+    ios_line.row_factory = sqlite3.Row
+    group.row_factory = sqlite3.Row
+    android.row_factory = sqlite3.Row
+
+    ios_cursor = ios_line.cursor()
+    group_cursor = group.cursor()
+    msgext_cursor = message_ext.cursor()
+    android_cursor = android.cursor()
+
+    # 建立 ZUSER/ZCHAT lookup
+    user_lookup = {row["ZMID"]: row["Z_PK"] for row in ios_cursor.execute("SELECT Z_PK, ZMID FROM ZUSER")}
+    chat_lookup = {row["ZMID"]: row["Z_PK"] for row in ios_cursor.execute("SELECT Z_PK, ZMID FROM ZCHAT")}
+
+    # chat
+    count = 0
+    for row in android_cursor.execute("SELECT * FROM chat"):
+        data = convert_chat_to_zchat(row)
+        if not data or not data["ZMID"]:
+            continue
+        if data["ZMID"] in chat_lookup:
+            continue
+        placeholders = ', '.join(['?'] * len(data))
+        columns = ', '.join(data.keys())
+        sql = f"INSERT INTO ZCHAT ({columns}) VALUES ({placeholders})"
+        ios_cursor.execute(sql, list(data.values()))
+        count += 1
+    ios_line.commit()
+    print(f"✅ chat ➜ ZCHAT 匯入完成，共 {count} 筆")
+
+    # chat_history
+    count = 0
+    for row in android_cursor.execute("SELECT * FROM chat_history"):
+        data = convert_chathistory_to_zmessage(row, chat_lookup, user_lookup)
+        if not data:
+            continue
+        placeholders = ', '.join(['?'] * len(data))
+        columns = ', '.join(data.keys())
+        sql = f"INSERT INTO ZMESSAGE ({columns}) VALUES ({placeholders})"
+        ios_cursor.execute(sql, list(data.values()))
+        count += 1
+    ios_line.commit()
+    print(f"✅ chat_history ➜ ZMESSAGE 匯入完成，共 {count} 筆")
+
+    # reactions
+    count = 0
+    for row in android_cursor.execute("SELECT * FROM reactions"):
+        data = convert_reactions_to_zreaction(row)
+        if not data:
+            continue
+        placeholders = ', '.join(['?'] * len(data))
+        columns = ', '.join(data.keys())
+        sql = f"INSERT INTO ZMESSAGEREACTION ({columns}) VALUES ({placeholders})"
+        msgext_cursor.execute(sql, list(data.values()))
+        count += 1
+    message_ext.commit()
+    print(f"✅ reactions ➜ ZMESSAGEREACTION 匯入完成，共 {count} 筆")
+
+    # 關閉資料庫
+    ios_line.close()
+    group.close()
+    message_ext.close()
+    android.close()
