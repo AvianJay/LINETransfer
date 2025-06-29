@@ -9,13 +9,25 @@ def backup_get_database(path, output):
         os.mkdir(output)
     backup = Backup.from_path(path)
     pt = backup.get_entry_by_domain_and_path("AppDomainGroup-group.com.linecorp.line", "Library/Application Support/PrivateStore")
-    for d in pt.iterdir(): id = d.name
-    dbf = backup.get_entry_by_domain_and_path("AppDomainGroup-group.com.linecorp.line", f"Library/Application Support/PrivateStore/{id}/Messages/Line.sqlite")
-    open(os.path.join(output, "Line.sqlite"), "wb").write(dbf.read_raw())
-    gdbf = backup.get_entry_by_domain_and_path("AppDomainGroup-group.com.linecorp.line", f"Library/Application Support/PrivateStore/{id}/Messages/UnifiedGroup.sqlite")
-    open(os.path.join(output, "UnifiedGroup.sqlite"), "wb").write(gdbf.read_raw())
-    medbf = backup.get_entry_by_domain_and_path("AppDomainGroup-group.com.linecorp.line", f"Library/Application Support/PrivateStore/{id}/Messages/MessageExt.sqlite")
-    open(os.path.join(output, "MessageExt.sqlite"), "wb").write(medbf.read_raw())
+    for d in pt.iterdir():
+        id = d.name
+
+    files = [
+        ("Line.sqlite", f"Library/Application Support/PrivateStore/{id}/Messages/Line.sqlite"),
+        ("UnifiedGroup.sqlite", f"Library/Application Support/PrivateStore/{id}/Messages/UnifiedGroup.sqlite"),
+        ("MessageExt.sqlite", f"Library/Application Support/PrivateStore/{id}/Messages/MessageExt.sqlite"),
+    ]
+
+    for filename, entry_path in files:
+        entry = backup.get_entry_by_domain_and_path("AppDomainGroup-group.com.linecorp.line", entry_path)
+        out_path = os.path.join(output, filename)
+        with open(out_path, "wb") as f:
+            f.write(entry.read_raw())
+        # Set file modification time
+        mtime = entry.last_modified
+        atime = mtime.timestamp()
+        os.utime(out_path, (atime, atime))
+
     return output
 
 def backup_device(backup_directory, pg=lambda x: None):

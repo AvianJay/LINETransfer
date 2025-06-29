@@ -198,3 +198,4 @@ cython_debug/
 
 # downloaded things
 jp.naver.line*
+*.sqlite

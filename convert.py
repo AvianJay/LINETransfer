@@ -411,9 +411,18 @@ def convert_reactions_to_zreaction(row, z_ent=2):
     }
 
 def migrate_android_to_ios(android_db_path, ios_folder):
-    ios_line = sqlite3.connect(os.path.join(ios_folder, "Line.sqlite"))
-    group = sqlite3.connect(os.path.join(ios_folder, "UnifiedGroup.sqlite"))
-    message_ext = sqlite3.connect(os.path.join(ios_folder, "MessageExt.sqlite"))
+    # 先記錄原始檔案的修改時間
+    line_path = os.path.join(ios_folder, "Line.sqlite")
+    group_path = os.path.join(ios_folder, "UnifiedGroup.sqlite")
+    msgext_path = os.path.join(ios_folder, "MessageExt.sqlite")
+
+    line_mtime = os.path.getmtime(line_path)
+    group_mtime = os.path.getmtime(group_path)
+    msgext_mtime = os.path.getmtime(msgext_path)
+
+    ios_line = sqlite3.connect(line_path)
+    group = sqlite3.connect(group_path)
+    message_ext = sqlite3.connect(msgext_path)
     android = sqlite3.connect(android_db_path)
 
     ios_line.row_factory = sqlite3.Row
@@ -463,14 +472,27 @@ def migrate_android_to_ios(android_db_path, ios_folder):
     z_pk_row = ios_cursor.fetchone()
     z_ent = z_pk_row["Z_ENT"] if z_pk_row else 0
     count = 0
+    # 先建立一個已存在 ZMESSAGE 的 (ZTIMESTAMP, ZTEXT, ZSENDER) 索引集合
+    ios_cursor.execute("SELECT ZTIMESTAMP, ZTEXT, ZSENDER FROM ZMESSAGE")
+    existing_messages = set(
+        (row[0], row[1], row[2]) for row in ios_cursor.fetchall()
+    )
+
     for row in android_cursor.execute("SELECT * FROM chat_history"):
         data = convert_chathistory_to_zmessage(row, chat_lookup, user_lookup, z_ent)
         if not data:
+            continue
+        key = (data["ZTIMESTAMP"], data["ZTEXT"], data["ZSENDER"])
+        if key in existing_messages:
+            # print("Skip existed (same content)")
+            continue
+        if data["ZCHAT"] in chat_lookup:
             continue
         placeholders = ', '.join(['?'] * len(data))
         columns = ', '.join(data.keys())
         sql = f"INSERT INTO ZMESSAGE ({columns}) VALUES ({placeholders})"
         ios_cursor.execute(sql, list(data.values()))
+        existing_messages.add(key)
         count += 1
     ios_line.commit()
     # 更新 Z_PRIMARYKEY 的 Z_MAX
@@ -492,6 +514,13 @@ def migrate_android_to_ios(android_db_path, ios_folder):
     for row in android_cursor.execute("SELECT * FROM reactions"):
         data = convert_reactions_to_zreaction(row, z_ent)
         if not data:
+            continue
+        # 檢查是否已存在相同的 server_message_id 和 member_id
+        msgext_cursor.execute(
+            "SELECT 1 FROM ZMESSAGEREACTION WHERE ZMESSAGEID = ? AND ZREACTORMID = ?",
+            (data["ZMESSAGEID"], data["ZREACTORMID"])
+        )
+        if msgext_cursor.fetchone():
             continue
         placeholders = ', '.join(['?'] * len(data))
         columns = ', '.join(data.keys())
@@ -515,6 +544,10 @@ def migrate_android_to_ios(android_db_path, ios_folder):
     group.close()
     message_ext.close()
     android.close()
+    # 恢復原始檔案的修改時間
+    os.utime(line_path, (line_mtime, line_mtime))
+    os.utime(group_path, (group_mtime, group_mtime))
+    os.utime(msgext_path, (msgext_mtime, msgext_mtime))
 
 def main():
     parser = argparse.ArgumentParser(description="iOS/Android LINE 資料庫轉換工具")
