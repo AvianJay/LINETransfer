@@ -162,33 +162,34 @@ def download_files(service, app_name):
         print("No files found")
         return False
 
-    print(f"Found {len(files)} files, starting download")
+    print(f"Found {len(files)} files, starting download nearest...")
 
     output_dir = os.path.join("databases", "gdrive")
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    for file_item in files:
-        print(f"Downloading file {file_item['name']} with id {file_item['id']}")
-        req = service.files().get_media(fileId=file_item["id"])
-        output_path = os.path.join(output_dir, f"{file_item['name']}")
-        # 先下載到暫存檔
-        with tempfile.NamedTemporaryFile(delete=False) as tmp_f:
-            downloader = googleapiclient.http.MediaIoBaseDownload(tmp_f, req)
-            done = False
-            while not done:
-                _status, done = downloader.next_chunk()
-            tmp_path = tmp_f.name
+    # 只挑最新的檔案下載
+    latest_file = max(files, key=lambda x: x["modifiedTime"])
+    print(f"Downloading latest file {latest_file['name']} with id {latest_file['id']}")
+    req = service.files().get_media(fileId=latest_file["id"])
+    output_path = os.path.join(output_dir, f"{latest_file['name']}")
+    # 先下載到暫存檔
+    with tempfile.NamedTemporaryFile(delete=False) as tmp_f:
+        downloader = googleapiclient.http.MediaIoBaseDownload(tmp_f, req)
+        done = False
+        while not done:
+            _status, done = downloader.next_chunk()
+        tmp_path = tmp_f.name
 
-        # 解壓縮gzip到output_path
-        with open(tmp_path, "rb") as f_in, open(output_path, "wb") as f_out:
-            with gzip.GzipFile(fileobj=f_in) as gz:
-                shutil.copyfileobj(gz, f_out)
+    # 解壓縮gzip到output_path
+    with open(tmp_path, "rb") as f_in, open(output_path, "wb") as f_out:
+        with gzip.GzipFile(fileobj=f_in) as gz:
+            shutil.copyfileobj(gz, f_out)
 
-        os.remove(tmp_path)
+    os.remove(tmp_path)
 
-        modified_time = datetime.datetime.fromisoformat(file_item["modifiedTime"]).timestamp()
-        os.utime(output_path, (modified_time, modified_time))
+    modified_time = datetime.datetime.fromisoformat(latest_file["modifiedTime"]).timestamp()
+    os.utime(output_path, (modified_time, modified_time))
 
     return True
 
