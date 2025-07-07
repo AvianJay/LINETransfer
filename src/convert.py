@@ -555,13 +555,13 @@ def main():
 
     # iOS ➜ Android
     parser_ios2android = subparsers.add_parser("ios2android", help="iOS 轉 Android")
-    parser_ios2android.add_argument("ios_folder", help="iOS 資料夾 (需含 Line.sqlite, Group.sqlite, MessageExt.sqlite)")
+    parser_ios2android.add_argument("ios_folder", help="iOS 資料夾 (需含 Line.sqlite, UnifiedGroup.sqlite, MessageExt.sqlite)")
     parser_ios2android.add_argument("android_db", help="輸出 Android 資料庫檔案路徑")
 
     # Android ➜ iOS
     parser_android2ios = subparsers.add_parser("android2ios", help="Android 轉 iOS")
     parser_android2ios.add_argument("android_db", help="Android 資料庫檔案路徑")
-    parser_android2ios.add_argument("ios_folder", help="輸出 iOS 資料夾 (需含 Line.sqlite, Group.sqlite, MessageExt.sqlite)")
+    parser_android2ios.add_argument("ios_folder", help="輸出 iOS 資料夾 (需含 Line.sqlite, UnifiedGroup.sqlite, MessageExt.sqlite)")
 
     args = parser.parse_args()
 
