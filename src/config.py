@@ -20,6 +20,7 @@ default_config = {
     "firstrun": True,
     "theme": "system",
     "app_update_check": "popup", # no, notify, popup
+    "ios_backup_location":"iDeviceBackups",
 }
 config_path = "config.json"
 _config = None

@@ -37,7 +37,7 @@ def backup_device(backup_directory, pg=lambda x: None):
     backup_client.backup(full=full, backup_directory=backup_directory, progress_callback=pg)
     return os.path.join(backup_directory, lockdown.udid)
 
-def get_database(out):
+def get_database(out=os.path.join("databases", "iOS")):
     if not os.path.exists("iDeviceBackups"): os.mkdir("iDeviceBackups")
     bd = backup_device("iDeviceBackups")
     return backup_get_database(bd, out)
