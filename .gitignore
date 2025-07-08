@@ -202,3 +202,10 @@ jp.naver.line*
 
 # flet
 storage/
+
+# backup
+iDeviceBackups/
+
+# config + databases
+config.json
+databases/
