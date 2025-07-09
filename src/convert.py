@@ -316,7 +316,7 @@ def migrate_zreaction_to_reactions(message_ext_conn, android_conn):
     android_conn.commit()
     print(f"✅ 已成功轉換 {count} 筆 reaction 資料")
 
-def migrate_all_ios_to_android(ios_folder, android_db_path):
+def migrate_ios_to_android(ios_folder, android_db_path):
     """
     ios_folder: 包含 Line.sqlite, Group.sqlite, MessageExt.sqlite 的資料夾路徑
     android_db_path: 目標 Android 資料庫檔案路徑
@@ -566,7 +566,7 @@ def main():
     args = parser.parse_args()
 
     if args.command == "ios2android":
-        migrate_all_ios_to_android(args.ios_folder, args.android_db)
+        migrate_ios_to_android(args.ios_folder, args.android_db)
     elif args.command == "android2ios":
         migrate_android_to_ios(args.android_db, args.ios_folder)
 
