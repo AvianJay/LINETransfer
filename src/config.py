@@ -6,7 +6,7 @@ import threading
 
 # info
 app_version = "0.0.1"
-config_version = 1
+config_version = 2
 update_channel = "dev"
 
 # some global variables
@@ -21,6 +21,7 @@ default_config = {
     "theme": "system",
     "app_update_check": "popup", # no, notify, popup
     "ios_backup_location":"iDeviceBackups",
+    "google_email": "",
 }
 config_path = "config.json"
 _config = None
