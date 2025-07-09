@@ -50,7 +50,7 @@ jobs:
       - name: Upload macOS
         uses: actions/upload-artifact@v4
         with:
-          name: taiwanbusflet-macos
+          name: linetransfer-macos
           path: build/macos
       
   build-windows:
@@ -85,7 +85,7 @@ jobs:
       - name: Upload Windows
         uses: actions/upload-artifact@v4
         with:
-          name: taiwanbusflet-windows
+          name: linetransfer-windows
           path: build/windows
 
   build-linux:
@@ -125,5 +125,5 @@ jobs:
       - name: Upload Linux
         uses: actions/upload-artifact@v4
         with:
-          name: taiwanbusflet-linux
+          name: linetransfer-linux
           path: build/linux
