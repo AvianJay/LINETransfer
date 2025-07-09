@@ -43,7 +43,11 @@ def main(page: ft.Page):
                 convert_column.controls = [
                     ft.Text("上傳至Google Drive", size=30),
                     ft.Text("正在上傳轉換後的備份...", size=20),
-                    ft.ProgressRing(scale=100),
+                    ft.Container(
+                        expand=True,
+                        content=ft.ProgressRing(scale=5),
+                        alignment=ft.alignment.center,
+                    ),
                 ]
                 page.update()
                 gdrive.upload_file(email, path, filename)
@@ -68,29 +72,38 @@ def main(page: ft.Page):
         convert_column.controls = [
             ft.Text("備份iOS裝置", size=30),
             ft.Text("正在備份...", size=20),
-            ft.ProgressRing(scale=100),
+            ft.Container(
+                expand=True,
+                content=ft.ProgressRing(scale=5),
+                alignment=ft.alignment.center,
+            ),
         ]
         page.update()
         def on_upd(p):
-            convert_column.controls[2].value = p / 100
+            convert_column.controls[2].content.value = p / 100
             page.update()
+        print("Starting iOS backup...")
         bd = ios.backup_device(config.config("ios_backup_location"), on_upd)
-        convert_column.controls[2].value = None
+        convert_column.controls[2].content.value = None
         convert_column.controls[1].value = "正在取得資料庫..."
         page.update()
         ios.backup_get_database(bd, os.path.join("databases", "iOS"))
-        convert_android_upload(os.path.join("databases", "iOS"))
+        convert_android_ios_converting(os.path.join("databases", "iOS"))
 
-    def convert_android_ios_database(e):
+    def convert_android_ios_converting(path):
         if os.path.exists(os.path.join("databases", "gdrive_converted.sqlite")): os.remove(os.path.join("databases", "gdrive_converted.sqlite"))
         convert_column.controls = [
             ft.Text("轉換程序", size=30),
             ft.Text("正在轉換中，請稍後...", size=20),
-            ft.ProgressRing(scale=100),
+            ft.Container(
+                expand=True,
+                content=ft.ProgressRing(scale=5),
+                alignment=ft.alignment.center,
+            ),
         ]
         page.update()
         try:
-            convert.migrate_ios_to_android(file_picker.result.path, os.path.join("databases", "gdrive_converted.sqlite"))
+            convert.migrate_ios_to_android(path, os.path.join("databases", "gdrive_converted.sqlite"))
             convert_android_upload(os.path.join("databases", "gdrive_converted.sqlite"))
         except:
             convert_column.controls.append(ft.Text("轉換錯誤！請重新開啟程式！", size=20, color=ft.Colors.RED_700))
@@ -124,7 +137,7 @@ def main(page: ft.Page):
                     icon=ft.Icons.FOLDER_OPEN,
                     on_click=lambda e: file_picker.get_directory_path("選擇包含sqlite檔案的資料夾..."),
                 ),
-                ft.TextButton("繼續", on_click=convert_android_ios_database, disabled=True),
+                ft.TextButton("繼續", on_click=lambda e:convert_android_ios_converting(file_picker.result.path), disabled=True),
             ]
         page.update()
 
@@ -194,7 +207,9 @@ def main(page: ft.Page):
                     style=ft.ButtonStyle(bgcolor=ft.Colors.with_opacity(0.2, ft.Colors.PRIMARY), shape=ft.RoundedRectangleBorder(radius=15)),
                 ),
             ])
-        ])
+        ],
+        alignment=ft.MainAxisAlignment.CENTER,
+        )
 
     convert_column = default_convert_column()
 
