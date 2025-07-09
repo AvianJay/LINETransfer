@@ -8,7 +8,7 @@ LINE資料庫轉換器
  - [ ] iOS轉Android (尚未測試)
  - [x] 獲取 Google Drive 上的聊天備份
  - [x] 獲取 iOS 裝置上的聊天資料
- - [ ] 上傳聊天備份到 Google Drive
+ - [ ] 上傳聊天備份到 Google Drive (尚未測試)
  - [ ] 在 iOS 裝置上還原聊天資料
  - [ ] CLI
  - [ ] GUI
