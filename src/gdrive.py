@@ -231,13 +231,32 @@ def download(email, todownload=True):
     service = get_gdrive_service(auths[email]["gdrive"])
     download_file(service, todownload)
 
-def upload_file(service, filepath):
+def upload_file(email, filepath, filename):
+    auth = None
+    if os.path.exists(".googleauth.json"):
+        auths = json.load(open(".googleauth.json", "r"))
+        if auths.get(email):
+            auth = auths.get(email)
+    else:
+        auths = {}
+    if not auth:
+        oauthtoken = browser_get_oauth_token(email)
+        mastertoken = get_master_token(oauthtoken)
+        
+        auths[email] = {
+            "oauth": oauthtoken,
+            "master": mastertoken,
+            "gdrive": None,
+        }
+    auths[email]["gdrive"] = get_gdrive_access_token(email, auths[email]["master"], LINE_PKG, LINE_SIG)
+    json.dump(auths, open(".googleauth.json", "w"))
+    service = get_gdrive_service(auths[email]["gdrive"])
     gz_path = filepath + ".gz"
     with open(filepath, "rb") as f_in, gzip.open(gz_path, "wb") as f_out:
         shutil.copyfileobj(f_in, f_out)
 
     file_metadata = {
-        "name": os.path.basename(filepath),
+        "name": filename,
         "parents": ["appDataFolder"],
     }
     media = googleapiclient.http.MediaFileUpload(
