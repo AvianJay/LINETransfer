@@ -226,7 +226,19 @@ def download(email, todownload=True):
             "master": mastertoken,
             "gdrive": None,
         }
-    auths[email]["gdrive"] = get_gdrive_access_token(email, auths[email]["master"], LINE_PKG, LINE_SIG)
+    try:
+        auths[email]["gdrive"] = get_gdrive_access_token(email, auths[email]["master"], LINE_PKG, LINE_SIG)
+    except:
+        # need relogin
+        oauthtoken = browser_get_oauth_token(email)
+        mastertoken = get_master_token(oauthtoken)
+        
+        auths[email] = {
+            "oauth": oauthtoken,
+            "master": mastertoken,
+            "gdrive": None,
+        }
+        auths[email]["gdrive"] = get_gdrive_access_token(email, auths[email]["master"], LINE_PKG, LINE_SIG)
     json.dump(auths, open(".googleauth.json", "w"))
     service = get_gdrive_service(auths[email]["gdrive"])
     download_file(service, todownload)

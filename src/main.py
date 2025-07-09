@@ -12,6 +12,8 @@ def main(page: ft.Page):
     file_picker = ft.FilePicker()
     page.overlay.append(file_picker)
 
+    if not os.path.exists("databases"): os.mkdir("databases")
+
     def update_theme(theme=config.config("theme")):
         config.config("theme", ft.ThemeMode(theme).value, "w")
         page.theme_mode = ft.ThemeMode(config.config("theme"))
@@ -101,6 +103,7 @@ def main(page: ft.Page):
                     page.update()
                     return
             convert_column.controls[3].disabled = False
+            page.update()
         file_picker.on_result = on_result
         if e.control.parent.controls[2].value == "ios_backup":
             convert_column.controls = [
