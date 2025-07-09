@@ -3,7 +3,6 @@ import os
 import sys
 import time
 import json
-import argparse
 import requests
 import httplib2
 import datetime
@@ -12,13 +11,13 @@ import googleapiclient
 from apiclient import discovery
 from oauth2client import client
 from selenium import webdriver
-from selenium.common import NoSuchElementException, ElementNotInteractableException
-from selenium.webdriver.chrome.service import Service as ChromeService
+# from selenium.common import NoSuchElementException, ElementNotInteractableException
+# from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.common.by import By
-from selenium.webdriver import Keys, ActionChains
-from selenium.webdriver.support.ui import Select
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.chrome.options import Options
+from selenium.webdriver import Keys
+# from selenium.webdriver.support.ui import Select
+# from webdriver_manager.chrome import ChromeDriverManager
+# from selenium.webdriver.chrome.options import Options
 import gzip
 import shutil
 import tempfile
@@ -128,7 +127,7 @@ def get_gdrive_service(gdrive_token):
     return service
 
 
-def download_files(service, app_name):
+def download_file(service, todownload=True):
     result = (
         service.files()
         .list(
@@ -170,28 +169,29 @@ def download_files(service, app_name):
 
     # 只挑最新的檔案下載
     latest_file = max(files, key=lambda x: x["modifiedTime"])
-    print(f"Downloading latest file {latest_file['name']} with id {latest_file['id']}")
-    req = service.files().get_media(fileId=latest_file["id"])
-    output_path = os.path.join(output_dir, f"{latest_file['name']}")
-    # 先下載到暫存檔
-    with tempfile.NamedTemporaryFile(delete=False) as tmp_f:
-        downloader = googleapiclient.http.MediaIoBaseDownload(tmp_f, req)
-        done = False
-        while not done:
-            _status, done = downloader.next_chunk()
-        tmp_path = tmp_f.name
+    if todownload:
+        print(f"Downloading latest file {latest_file['name']} with id {latest_file['id']}")
+        req = service.files().get_media(fileId=latest_file["id"])
+        output_path = os.path.join(output_dir, f"{latest_file['name']}")
+        # 先下載到暫存檔
+        with tempfile.NamedTemporaryFile(delete=False) as tmp_f:
+            downloader = googleapiclient.http.MediaIoBaseDownload(tmp_f, req)
+            done = False
+            while not done:
+                _status, done = downloader.next_chunk()
+            tmp_path = tmp_f.name
 
-    # 解壓縮gzip到output_path
-    with open(tmp_path, "rb") as f_in, open(output_path, "wb") as f_out:
-        with gzip.GzipFile(fileobj=f_in) as gz:
-            shutil.copyfileobj(gz, f_out)
+        # 解壓縮gzip到output_path
+        with open(tmp_path, "rb") as f_in, open(output_path, "wb") as f_out:
+            with gzip.GzipFile(fileobj=f_in) as gz:
+                shutil.copyfileobj(gz, f_out)
 
-    os.remove(tmp_path)
+        os.remove(tmp_path)
 
-    modified_time = datetime.datetime.fromisoformat(latest_file["modifiedTime"]).timestamp()
-    os.utime(output_path, (modified_time, modified_time))
+        modified_time = datetime.datetime.fromisoformat(latest_file["modifiedTime"]).timestamp()
+        os.utime(output_path, (modified_time, modified_time))
 
-    return True
+    return latest_file['name']
 
 def browser_get_oauth_token(email=None):
     # if os.path.exists(".googleoauth") and not force:
@@ -209,7 +209,7 @@ def browser_get_oauth_token(email=None):
     driver.quit()
     return token
 
-def download(email):
+def download(email, todownload=True):
     auth = None
     if os.path.exists(".googleauth.json"):
         auths = json.load(open(".googleauth.json", "r"))
@@ -229,7 +229,31 @@ def download(email):
     auths[email]["gdrive"] = get_gdrive_access_token(email, auths[email]["master"], LINE_PKG, LINE_SIG)
     json.dump(auths, open(".googleauth.json", "w"))
     service = get_gdrive_service(auths[email]["gdrive"])
-    download_files(service, LINE_PKG)
+    download_file(service, todownload)
+
+def upload_file(service, filepath):
+    gz_path = filepath + ".gz"
+    with open(filepath, "rb") as f_in, gzip.open(gz_path, "wb") as f_out:
+        shutil.copyfileobj(f_in, f_out)
+
+    file_metadata = {
+        "name": os.path.basename(filepath),
+        "parents": ["appDataFolder"],
+    }
+    media = googleapiclient.http.MediaFileUpload(
+        gz_path,
+        mimetype="application/gzip",
+        resumable=True
+    )
+    uploaded = service.files().create(
+        body=file_metadata,
+        media_body=media,
+        fields="id, name"
+    ).execute()
+
+    os.remove(gz_path)
+    print(f"Uploaded {filepath} as {uploaded['name']} (id: {uploaded['id']})")
+    return uploaded
 
 if __name__ == "__main__":
     if len(sys.argv) > 2:
