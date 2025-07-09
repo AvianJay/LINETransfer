@@ -76,7 +76,10 @@ def main(page: ft.Page):
             page.update()
         bd = ios.backup_device("iDeviceBackups", on_upd)
         convert_column.controls[2].value = None
+        convert_column.controls[1].value = "正在取得資料庫..."
+        page.update()
         ios.backup_get_database(bd, os.path.join("databases", "iOS"))
+        convert_android_upload(os.path.join("databases", "iOS"))
 
     def convert_android_ios_database(e):
         if os.path.exists(os.path.join("databases", "gdrive_converted.sqlite")): os.remove(os.path.join("databases", "gdrive_converted.sqlite"))
