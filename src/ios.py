@@ -37,6 +37,14 @@ def backup_device(backup_directory, pg=lambda x: None):
     backup_client.backup(full=full, backup_directory=backup_directory, progress_callback=pg)
     return os.path.join(backup_directory, lockdown.udid)
 
+def check_device():
+    try:
+        lockdown = create_using_usbmux()
+        return lockdown.display_name
+    except Exception as e:
+        print("No iOS device connected:", e)
+        return False
+
 def get_database(out=os.path.join("databases", "iOS")):
     if not os.path.exists("iDeviceBackups"): os.mkdir("iDeviceBackups")
     bd = backup_device("iDeviceBackups")

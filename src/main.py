@@ -27,8 +27,9 @@ def main(page: ft.Page):
 
     def convert_android_finish():
         convert_column.controls = [
-            ft.Text("上傳成功！", size=30),
-            ft.Text("請在Android裝置還原聊天備份！", size=20),
+            ft.Text("上傳成功！", text_align=ft.TextAlign.CENTER, size=30),
+            ft.Text(f"已經幫你轉換了 {str(config.converted)} 筆資料啦！", text_align=ft.TextAlign.CENTER, size=20),
+            ft.Text("請在Android裝置還原聊天備份！", text_align=ft.TextAlign.CENTER, size=20),
             ft.TextButton("回到主頁", on_click=go_to_home),
         ]
         page.update()
@@ -41,8 +42,8 @@ def main(page: ft.Page):
             filename = gdrive.download(email, False)
             if filename:
                 convert_column.controls = [
-                    ft.Text("上傳至Google Drive", size=30),
-                    ft.Text("正在上傳轉換後的備份...", size=20),
+                    ft.Text("上傳至Google Drive", text_align=ft.TextAlign.CENTER, size=30),
+                    ft.Text("正在上傳轉換後的備份...", text_align=ft.TextAlign.CENTER, size=20),
                     ft.Container(
                         expand=True,
                         content=ft.ProgressRing(scale=5),
@@ -54,7 +55,7 @@ def main(page: ft.Page):
                 convert_android_finish()
             else:
                 convert_column.controls.pop(-1)
-                convert_column.controls.append(ft.Text("請確保您已經備份了！", color=ft.Colors.RED_700))
+                convert_column.controls.append(ft.Text("請確保您已經備份了！", text_align=ft.TextAlign.CENTER, color=ft.Colors.RED_700))
                 page.update()
         convert_column.controls = [
             ft.Text("上傳至Google Drive", size=30),
@@ -70,8 +71,8 @@ def main(page: ft.Page):
 
     def convert_android_ios_backup(e):
         convert_column.controls = [
-            ft.Text("備份iOS裝置", size=30),
-            ft.Text("正在備份...", size=20),
+            ft.Text("備份iOS裝置", text_align=ft.TextAlign.CENTER, size=30),
+            ft.Text("正在備份...", text_align=ft.TextAlign.CENTER, size=20),
             ft.Container(
                 expand=True,
                 content=ft.ProgressRing(scale=5),
@@ -80,7 +81,10 @@ def main(page: ft.Page):
         ]
         page.update()
         def on_upd(p):
-            convert_column.controls[2].content.value = p / 100
+            if p == 100 or p == 0:
+                convert_column.controls[2].content.value = None
+            else:
+                convert_column.controls[2].content.value = p / 100
             page.update()
         print("Starting iOS backup...")
         bd = ios.backup_device(config.config("ios_backup_location"), on_upd)
@@ -103,7 +107,8 @@ def main(page: ft.Page):
         ]
         page.update()
         try:
-            convert.migrate_ios_to_android(path, os.path.join("databases", "gdrive_converted.sqlite"))
+            c, m, r = convert.migrate_ios_to_android(path, os.path.join("databases", "gdrive_converted.sqlite"))
+            config.converted = c + m + r
             convert_android_upload(os.path.join("databases", "gdrive_converted.sqlite"))
         except:
             convert_column.controls.append(ft.Text("轉換錯誤！請重新開啟程式！", size=20, color=ft.Colors.RED_700))
@@ -122,11 +127,20 @@ def main(page: ft.Page):
             convert_column.controls[3].disabled = False
             page.update()
         file_picker.on_result = on_result
+        def check_device(e):
+            e.control.disabled = True
+            page.update()
+            if ios.check_device():
+                convert_android_ios_backup(e)
+            else:
+                convert_column.controls.append(ft.Text("沒有連接到iOS裝置！", color=ft.Colors.RED_700))
+                e.control.disabled = False
+                page.update()
         if e.control.parent.controls[2].value == "ios_backup":
             convert_column.controls = [
                 ft.Text("備份iOS裝置", size=30),
                 ft.Text("請先將iTunes打開以及插入你的iOS裝置。", size=20),
-                ft.TextButton("繼續", on_click=convert_android_ios_backup),
+                ft.TextButton("繼續", on_click=check_device),
             ]
         elif e.control.parent.controls[2].value == "ios_database":
             convert_column.controls = [
@@ -144,8 +158,8 @@ def main(page: ft.Page):
     def convert_android(e):
         convert_column.controls.clear()
         convert_column.controls = [
-            ft.Text("轉換至Android", size=30),
-            ft.Text("請選擇下面一種資料庫的來源。", size=20),
+            ft.Text("轉換至Android", text_align=ft.TextAlign.CENTER, size=30),
+            ft.Text("請選擇下面一種資料庫的來源。", text_align=ft.TextAlign.CENTER, size=20),
             ft.Dropdown(
                 label="資料庫來源",
                 options=[
@@ -153,6 +167,8 @@ def main(page: ft.Page):
                     ft.DropdownOption(key="ios_database", content=ft.Text("iOS格式的資料庫")),
                 ],
                 value="ios_backup",
+                alignment=ft.alignment.center,
+                text_align=ft.TextAlign.CENTER,
             ),
             ft.TextButton("繼續", on_click=convert_android_selected),
         ]
@@ -161,8 +177,8 @@ def main(page: ft.Page):
 
     def default_convert_column():
         return ft.Column(controls=[
-            ft.Text("歡迎來到LINETransfer！", size=30),
-            ft.Text("請選擇下面一種轉換方式。", size=20),
+            ft.Text("歡迎來到LINETransfer！", text_align=ft.TextAlign.CENTER, size=30),
+            ft.Text("請選擇下面一種轉換方式。", text_align=ft.TextAlign.CENTER, size=20),
             ft.Row([
                 ft.TextButton(
                     content=ft.Container(
@@ -201,7 +217,7 @@ def main(page: ft.Page):
                                 alignment=ft.MainAxisAlignment.CENTER,
                             ),
                         padding=10,
-                        on_click=lambda e: None,
+                        on_click=lambda e: page.open(ft.SnackBar(ft.Text("WIP"))),
                         alignment=ft.alignment.center,
                     ),
                     style=ft.ButtonStyle(bgcolor=ft.Colors.with_opacity(0.2, ft.Colors.PRIMARY), shape=ft.RoundedRectangleBorder(radius=15)),
@@ -272,7 +288,11 @@ def main(page: ft.Page):
     def home_show_page(index):
         vr.controls.pop(-1)
         if index == 0:
-            vr.controls.append(convert_column)
+            vr.controls.append(ft.Container(
+                content=convert_column,
+                expand=True,
+                alignment=ft.alignment.center,
+            ))
         elif index == 1:
             vr.controls.append(tools_column)
         elif index == 2:

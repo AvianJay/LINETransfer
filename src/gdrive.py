@@ -161,7 +161,7 @@ def download_file(service, todownload=True):
         print("No files found")
         return False
 
-    print(f"Found {len(files)} files, starting download nearest...")
+    print(f"Found {len(files)} file(s)")
 
     output_dir = os.path.join("databases", "gdrive")
     if not os.path.exists(output_dir):

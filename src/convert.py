@@ -163,22 +163,27 @@ def migrate_zchat_to_chat(ios_conn, group_conn, android_conn):
 
     ios_cursor.execute("SELECT * FROM ZCHAT")
     count = 0
+    # 先建立一個已存在 chat_id 的集合
+    android_cursor.execute("SELECT chat_id FROM chat")
+    existing_chat_ids = set(row[0] for row in android_cursor.fetchall())
+
     for row in ios_cursor.fetchall():
         chat_row = convert_zchat_to_chat(row, ios_cursor, group_cursor)
         if not chat_row:
             continue
         # 檢查 chat_id 是否已存在
-        android_cursor.execute("SELECT 1 FROM chat WHERE chat_id = ?", (chat_row["chat_id"],))
-        if android_cursor.fetchone():
+        if chat_row["chat_id"] in existing_chat_ids:
             continue  # 已存在則跳過
         placeholders = ', '.join('?' for _ in chat_row)
         columns = ', '.join(chat_row.keys())
         sql = f"INSERT INTO chat ({columns}) VALUES ({placeholders})"
         android_cursor.execute(sql, list(chat_row.values()))
+        existing_chat_ids.add(chat_row["chat_id"])
         count += 1
 
     android_conn.commit()
     print(f"✅ ZCHAT ➜ chat 匯入完成，共 {count} 筆")
+    return count
 
 def convert_zmessage_to_chathistory(msg_row, chat_lookup, zuser_lookup):
     chat_id = chat_lookup.get(msg_row["ZCHAT"])
@@ -232,34 +237,33 @@ def migrate_zmessage_to_chathistory(ios_conn, android_conn):
     zuser_lookup = {row["Z_PK"]: row["ZMID"] for row in lookup_cursor.execute("SELECT Z_PK, ZMID FROM ZUSER").fetchall()}
     # print(chat_lookup)
 
+    # 建立一個集合來記錄已存在的 (delivered_time, content, from_mid)
+    existing_messages = set()
+    android_cursor.execute("SELECT delivered_time, content, from_mid FROM chat_history")
+    for r in android_cursor.fetchall():
+        existing_messages.add((r[0], r[1], r[2]))
+
     count = 0
     for row in zmessage_rows:
-        # print("a")
         msg = convert_zmessage_to_chathistory(row, chat_lookup, zuser_lookup)
         if not msg:
-            # print("Skip")
             continue
 
-        android_cursor.execute(
-            "SELECT content, from_mid FROM chat_history WHERE delivered_time = ?", (msg["delivered_time"],)
-        )
-        row_exist = android_cursor.fetchone()
-        if row_exist:
-            if row_exist[0] == msg["content"] and row_exist[1] == msg["from_mid"]:
-                print("Skip existed (same content)")
-                # print(msg)
-                continue  # 已存在且內容相同則跳過
-            else:
-                print("Same delivered_time but content differs, inserting anyway")
+        key = (msg["delivered_time"], msg["content"], msg["from_mid"])
+        if key in existing_messages:
+            print("Skip existed (same content)")
+            continue  # 已存在且內容相同則跳過
 
         columns = ', '.join(msg.keys())
         placeholders = ', '.join(['?'] * len(msg))
         sql = f"INSERT INTO chat_history ({columns}) VALUES ({placeholders})"
         android_cursor.execute(sql, list(msg.values()))
+        existing_messages.add(key)
         count += 1
 
     android_conn.commit()
     print(f"✅ ZMESSAGE ➜ chat_history 匯入完成，共 {count} 筆")
+    return count
 
 REACTION_TYPE_MAP = {
     2: "nice",
@@ -294,27 +298,29 @@ def migrate_zreaction_to_reactions(message_ext_conn, android_conn):
     rows = cursor.fetchall()
 
     count = 0
+    # 先建立一個已存在的 (server_message_id, member_id) 組合集合
+    dest.execute("SELECT server_message_id, member_id FROM reactions")
+    existing_pairs = set((row[0], row[1]) for row in dest.fetchall())
+
     for row in rows:
         data = convert_zreaction_to_reaction(row)
         if data is None:
             continue
 
-        # 檢查是否已存在相同的 server_message_id 和 member_id
-        dest.execute(
-            "SELECT 1 FROM reactions WHERE server_message_id = ? AND member_id = ?",
-            (data["server_message_id"], data["member_id"])
-        )
-        if dest.fetchone():
+        key = (data["server_message_id"], data["member_id"])
+        if key in existing_pairs:
             continue  # 已存在則跳過
 
         columns = ", ".join(data.keys())
         placeholders = ", ".join(["?"] * len(data))
         sql = f"INSERT INTO reactions ({columns}) VALUES ({placeholders})"
         dest.execute(sql, list(data.values()))
+        existing_pairs.add(key)
         count += 1
 
     android_conn.commit()
     print(f"✅ 已成功轉換 {count} 筆 reaction 資料")
+    return count
 
 def migrate_ios_to_android(ios_folder, android_db_path):
     """
@@ -330,17 +336,18 @@ def migrate_ios_to_android(ios_folder, android_db_path):
     android_conn = sqlite3.connect(android_db_path)
 
     # chat
-    migrate_zchat_to_chat(ios_conn, group_conn, android_conn)
+    chatcount = migrate_zchat_to_chat(ios_conn, group_conn, android_conn)
     # message
-    migrate_zmessage_to_chathistory(sqlite3.connect(os.path.join(ios_folder, "Line.sqlite")), android_conn)
+    messagecount = migrate_zmessage_to_chathistory(sqlite3.connect(os.path.join(ios_folder, "Line.sqlite")), android_conn)
     # reaction
-    migrate_zreaction_to_reactions(message_ext_conn, android_conn)
+    reaction = migrate_zreaction_to_reactions(message_ext_conn, android_conn)
 
     # close all
     ios_conn.close()
     group_conn.close()
     message_ext_conn.close()
     android_conn.close()
+    return chatcount, messagecount, reaction
 
 def convert_chat_to_zchat(row, z_ent):
     return {
@@ -443,16 +450,19 @@ def migrate_android_to_ios(android_db_path, ios_folder):
     z_pk_row = ios_cursor.fetchone()
     z_ent = z_pk_row["Z_ENT"] if z_pk_row else 0
     count = 0
+    # 先建立一個已存在 ZMID 的集合
+    existing_zmids = set(row["ZMID"] for row in ios_cursor.execute("SELECT ZMID FROM ZCHAT"))
     for row in android_cursor.execute("SELECT * FROM chat"):
         data = convert_chat_to_zchat(row, z_ent)
         if not data or not data["ZMID"]:
             continue
-        if data["ZMID"] in chat_lookup:
+        if data["ZMID"] in existing_zmids:
             continue
         placeholders = ', '.join(['?'] * len(data))
         columns = ', '.join(data.keys())
         sql = f"INSERT INTO ZCHAT ({columns}) VALUES ({placeholders})"
         ios_cursor.execute(sql, list(data.values()))
+        # existing_zmids.add(data["ZMID"])
         count += 1
     ios_line.commit()
 
@@ -466,6 +476,7 @@ def migrate_android_to_ios(android_db_path, ios_folder):
         )
         ios_line.commit()
     print(f"✅ chat ➜ ZCHAT 匯入完成，共 {count} 筆")
+    chatcount = count
 
     # chat_history
     ios_cursor.execute("SELECT * FROM Z_PRIMARYKEY WHERE Z_NAME = 'Message'")
@@ -505,27 +516,29 @@ def migrate_android_to_ios(android_db_path, ios_folder):
         )
         ios_line.commit()
     print(f"✅ chat_history ➜ ZMESSAGE 匯入完成，共 {count} 筆")
+    messagecount = count
 
     # reactions
     msgext_cursor.execute("SELECT Z_ENT FROM Z_PRIMARYKEY WHERE Z_NAME = 'MessageReaction'")
     z_pk_row = msgext_cursor.fetchone()
     z_ent = z_pk_row[0] if z_pk_row else 0
     count = 0
+    # 先建立一個已存在的 (ZMESSAGEID, ZREACTORMID) 組合集合
+    msgext_cursor.execute("SELECT ZMESSAGEID, ZREACTORMID FROM ZMESSAGEREACTION")
+    existing_pairs = set((row[0], row[1]) for row in msgext_cursor.fetchall())
+
     for row in android_cursor.execute("SELECT * FROM reactions"):
         data = convert_reactions_to_zreaction(row, z_ent)
         if not data:
             continue
-        # 檢查是否已存在相同的 server_message_id 和 member_id
-        msgext_cursor.execute(
-            "SELECT 1 FROM ZMESSAGEREACTION WHERE ZMESSAGEID = ? AND ZREACTORMID = ?",
-            (data["ZMESSAGEID"], data["ZREACTORMID"])
-        )
-        if msgext_cursor.fetchone():
+        key = (data["ZMESSAGEID"], data["ZREACTORMID"])
+        if key in existing_pairs:
             continue
         placeholders = ', '.join(['?'] * len(data))
         columns = ', '.join(data.keys())
         sql = f"INSERT INTO ZMESSAGEREACTION ({columns}) VALUES ({placeholders})"
         msgext_cursor.execute(sql, list(data.values()))
+        # existing_pairs.add(key)
         count += 1
     message_ext.commit()
     # 更新 Z_PRIMARYKEY 的 Z_MAX
@@ -538,6 +551,7 @@ def migrate_android_to_ios(android_db_path, ios_folder):
         )
         message_ext.commit()
     print(f"✅ reactions ➜ ZMESSAGEREACTION 匯入完成，共 {count} 筆")
+    reactionscount = count
 
     # 關閉資料庫
     ios_line.close()
@@ -548,6 +562,7 @@ def migrate_android_to_ios(android_db_path, ios_folder):
     os.utime(line_path, (line_mtime, line_mtime))
     os.utime(group_path, (group_mtime, group_mtime))
     os.utime(msgext_path, (msgext_mtime, msgext_mtime))
+    return chatcount, messagecount, reactionscount
 
 def main():
     parser = argparse.ArgumentParser(description="iOS/Android LINE 資料庫轉換工具")

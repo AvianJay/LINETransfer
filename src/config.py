@@ -10,8 +10,7 @@ config_version = 2
 update_channel = "dev"
 
 # some global variables
-current_bus = None
-
+converted = None
 platform = os.getenv("FLET_PLATFORM")
 
 # config
