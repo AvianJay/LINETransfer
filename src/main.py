@@ -79,6 +79,7 @@ def main(page: ft.Page):
         ios.backup_get_database(bd, os.path.join("databases", "iOS"))
 
     def convert_android_ios_database(e):
+        if os.path.exists(os.path.join("databases", "gdrive_converted.sqlite")): os.remove(os.path.join("databases", "gdrive_converted.sqlite"))
         convert_column.controls = [
             ft.Text("轉換程序", size=30),
             ft.Text("正在轉換中，請稍後...", size=20),

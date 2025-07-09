@@ -241,7 +241,7 @@ def download(email, todownload=True):
         auths[email]["gdrive"] = get_gdrive_access_token(email, auths[email]["master"], LINE_PKG, LINE_SIG)
     json.dump(auths, open(".googleauth.json", "w"))
     service = get_gdrive_service(auths[email]["gdrive"])
-    download_file(service, todownload)
+    return download_file(service, todownload)
 
 def upload_file(email, filepath, filename):
     auth = None
