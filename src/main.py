@@ -74,7 +74,7 @@ def main(page: ft.Page):
         def on_upd(p):
             convert_column.controls[2].value = p / 100
             page.update()
-        bd = ios.backup_device("iDeviceBackups", on_upd)
+        bd = ios.backup_device(config.config("ios_backup_location"), on_upd)
         convert_column.controls[2].value = None
         convert_column.controls[1].value = "正在取得資料庫..."
         page.update()
@@ -229,6 +229,15 @@ def main(page: ft.Page):
             ],
             on_change=lambda e: update_theme(e.control.value),
             value=config.config("theme"),
+        ),
+        # config.config("ios_backup_location")
+        ft.Text("iOS裝置備份位置"),
+        ft.TextField(
+            label="備份位置",
+            value=config.config("ios_backup_location"),
+            on_change=lambda e: config.config("ios_backup_location", e.control.value, "w"),
+            hint_text="iDeviceBackups",
+            helper_text="請確保這個資料夾已經存在。",
         ),
         ft.Text("應用程式更新檢查設定"),
         ft.Dropdown(
