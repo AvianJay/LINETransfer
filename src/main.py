@@ -173,6 +173,169 @@ def main(page: ft.Page):
             ft.TextButton("繼續", on_click=convert_android_selected),
         ]
         page.update()
+    
+    def convert_ios_restore(db_path):
+        convert_column.controls = [
+            ft.Text("還原iOS裝置", text_align=ft.TextAlign.CENTER, size=30),
+            ft.Text("正在還原iOS裝置...", text_align=ft.TextAlign.CENTER, size=20),
+            ft.Container(
+                expand=True,
+                content=ft.ProgressRing(scale=5),
+                alignment=ft.alignment.center,
+            ),
+        ]
+        page.update()
+        def on_upd(p):
+            if p == 100 or p == 0:
+                convert_column.controls[2].content.value = None
+            else:
+                convert_column.controls[2].content.value = p / 100
+            page.update()
+        print("Starting iOS restore...")
+        ios.restore_device(db_path, config.config("ios_backup_location"), on_upd)
+        convert_column.controls[2].content.value = None
+        convert_column.controls[1].value = "還原完成！"
+        page.update()
+    
+    def convert_ios_converting(fp, db_path):
+        if os.path.exists(os.path.join("databases", "gdrive_converted.sqlite")): os.remove(os.path.join("databases", "gdrive_converted.sqlite"))
+        convert_column.controls = [
+            ft.Text("轉換程序", size=30),
+            ft.Text("正在轉換中，請稍後...", size=20),
+            ft.Container(
+                expand=True,
+                content=ft.ProgressRing(scale=5),
+                alignment=ft.alignment.center,
+            ),
+        ]
+        page.update()
+        try:
+            c, m, r = convert.migrate_android_to_ios(fp, db_path)
+            config.converted = c + m + r
+            convert_ios_restore(db_path)
+        except:
+            convert_column.controls.append(ft.Text("轉換錯誤！請重新開啟程式！", size=20, color=ft.Colors.RED_700))
+            page.update()
+    
+    def convert_ios_backuping(fp):
+        convert_column.controls = [
+            ft.Text("備份iOS裝置", text_align=ft.TextAlign.CENTER, size=30),
+            ft.Text("正在備份iOS裝置...", text_align=ft.TextAlign.CENTER, size=20),
+            ft.Container(
+                expand=True,
+                content=ft.ProgressRing(scale=5),
+                alignment=ft.alignment.center,
+            ),
+        ]
+        page.update()
+        def on_upd(p):
+            if p == 100 or p == 0:
+                convert_column.controls[2].content.value = None
+            else:
+                convert_column.controls[2].content.value = p / 100
+            page.update()
+        print("Starting iOS backup...")
+        bd = ios.backup_device(config.config("ios_backup_location"), on_upd)
+        convert_column.controls[2].content.value = None
+        convert_column.controls[1].value = "正在取得資料庫..."
+        page.update()
+        ios.backup_get_database(bd, os.path.join("databases", "iOS"))
+        convert_ios_converting(fp, os.path.join("databases", "iOS"))
+
+    def convert_ios_get_backup(fp):
+        def check_device(e):
+            e.control.disabled = True
+            page.update()
+            if ios.check_device():
+                convert_ios_backuping(fp)
+            else:
+                convert_column.controls.append(ft.Text("沒有連接到iOS裝置！", color=ft.Colors.RED_700))
+                e.control.disabled = False
+                page.update()
+        convert_column.controls = [
+            ft.Text("備份iOS裝置", size=30),
+            ft.Text("請先在iOS裝置上登入LINE。", size=15),
+            ft.Text("將iTunes打開以及插入你的iOS裝置。", size=15),
+            ft.TextButton("繼續", on_click=check_device),
+        ]
+
+    def convert_ios_gdrive_download(e):
+        convert_column.controls = [
+            ft.Text("下載Google Drive備份", text_align=ft.TextAlign.CENTER, size=30),
+            ft.Text("正在下載Google Drive上的備份...", text_align=ft.TextAlign.CENTER, size=20),
+            ft.Container(
+                expand=True,
+                content=ft.ProgressRing(scale=5),
+                alignment=ft.alignment.center,
+            ),
+        ]
+        page.update()
+        fn = gdrive.download(config.config("google_email"), True)
+        fp = os.path.join("databases", "gdrive", fn)
+        if not os.path.exists(fp):
+            convert_column.controls.append(ft.Text("下載失敗！請確保您已經備份了！", text_align=ft.TextAlign.CENTER, color=ft.Colors.RED_700))
+            page.update()
+            return
+        convert_ios_get_backup(fp)
+
+    def convert_ios_selected(e):
+        def on_result(e):
+            # verify
+            f = e.files[0].name if e.files else None
+            print(e.files[0].path if e.files else "No files selected")
+            if not os.path.exists(os.path.join(e.path, f)):
+                convert_column.controls.append(ft.Text("選擇的檔案不是正確的！", color=ft.Colors.RED_700))
+                page.update()
+                return
+            convert_column.controls[3].disabled = False
+            page.update()
+        file_picker.on_result = on_result
+        def on_email_change(e):
+            config.config("google_email", e.control.value, "w")
+            if e.control.value:
+                convert_column.controls[4].disabled = False
+            else:
+                convert_column.controls[4].disabled = True
+            page.update()
+        if e.control.parent.controls[2].value == "gdrive":
+            convert_column.controls = [
+                ft.Text("請先在Android裝置執行備份的操作。", size=15),
+                ft.Text("在下一步，您可能需要登入您的Google帳戶。", size=15),
+                ft.Text("請確保下面填入的帳號跟備份的帳號是同一個的。", size=15),
+                ft.TextField(label="Google Email", value=config.config("google_email"), hint_text="example@gmail.com", on_change=on_email_change),
+                ft.TextButton("下一步", on_click=convert_ios_gdrive_download),
+            ]
+        elif e.control.parent.controls[2].value == "android_database":
+            convert_column.controls = [
+                ft.Text("選擇Android資料庫", size=30),
+                ft.Text("請選擇資料庫。", size=20),
+                ft.ElevatedButton(
+                    "選擇資料夾...",
+                    icon=ft.Icons.FOLDER_OPEN,
+                    on_click=lambda e: file_picker.pick_files(dialog_title="選擇sqlite檔案...", file_type=ft.FilePickerFileType.CUSTOM, allowed_extensions=["sqlite"]),
+                ),
+                ft.TextButton("繼續", on_click=lambda e:convert_ios_converting(file_picker.result.path), disabled=True),
+            ]
+        page.update()
+    
+    def convert_ios(e):
+        convert_column.controls.clear()
+        convert_column.controls = [
+            ft.Text("轉換至iOS", text_align=ft.TextAlign.CENTER, size=30),
+            ft.Text("請選擇下面一種資料庫的來源。", text_align=ft.TextAlign.CENTER, size=20),
+            ft.Dropdown(
+                label="資料庫來源",
+                options=[
+                    ft.DropdownOption(key="gdrive", content=ft.Text("Google Drive上的備份")),
+                    ft.DropdownOption(key="android_database", content=ft.Text("Android格式的資料庫")),
+                ],
+                value="gdrive",
+                alignment=ft.alignment.center,
+                text_align=ft.TextAlign.CENTER,
+            ),
+            ft.TextButton("繼續", on_click=convert_ios_selected),
+        ]
+        page.update()
 
 
     def default_convert_column():
