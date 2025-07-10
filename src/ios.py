@@ -2,33 +2,39 @@ import os
 import sys
 from pymobiledevice3.lockdown import create_using_usbmux
 from pymobiledevice3.services.mobilebackup2 import Mobilebackup2Service
+from pymobiledevice3.exceptions import NoDeviceConnectedError, PyMobileDevice3Exception
 from pyiosbackup import Backup
+from sparserestore import backup, perform_restore
 
-def backup_get_database(path, output):
-    if not os.path.exists(output):
-        os.mkdir(output)
+def backup_get_database(path, output=None):
+    if output:
+        if not os.path.exists(output):
+            os.mkdir(output)
     backup = Backup.from_path(path)
     pt = backup.get_entry_by_domain_and_path("AppDomainGroup-group.com.linecorp.line", "Library/Application Support/PrivateStore")
     for d in pt.iterdir():
         id = d.name
 
-    files = [
-        ("Line.sqlite", f"Library/Application Support/PrivateStore/{id}/Messages/Line.sqlite"),
-        ("UnifiedGroup.sqlite", f"Library/Application Support/PrivateStore/{id}/Messages/UnifiedGroup.sqlite"),
-        ("MessageExt.sqlite", f"Library/Application Support/PrivateStore/{id}/Messages/MessageExt.sqlite"),
-    ]
+    if output:
+        files = [
+            ("Line.sqlite", f"Library/Application Support/PrivateStore/{id}/Messages/Line.sqlite"),
+            ("UnifiedGroup.sqlite", f"Library/Application Support/PrivateStore/{id}/Messages/UnifiedGroup.sqlite"),
+            ("MessageExt.sqlite", f"Library/Application Support/PrivateStore/{id}/Messages/MessageExt.sqlite"),
+        ]
 
-    for filename, entry_path in files:
-        entry = backup.get_entry_by_domain_and_path("AppDomainGroup-group.com.linecorp.line", entry_path)
-        out_path = os.path.join(output, filename)
-        with open(out_path, "wb") as f:
-            f.write(entry.read_raw())
-        # Set file modification time
-        mtime = entry.last_modified
-        atime = mtime.timestamp()
-        os.utime(out_path, (atime, atime))
+        for filename, entry_path in files:
+            entry = backup.get_entry_by_domain_and_path("AppDomainGroup-group.com.linecorp.line", entry_path)
+            out_path = os.path.join(output, filename)
+            with open(out_path, "wb") as f:
+                f.write(entry.read_raw())
+            # Set file modification time
+            mtime = entry.last_modified
+            atime = mtime.timestamp()
+            os.utime(out_path, (atime, atime))
 
-    return output
+        return output
+    else:
+        return id
 
 def backup_device(backup_directory, pg=lambda x: None):
     lockdown = create_using_usbmux()
@@ -36,6 +42,48 @@ def backup_device(backup_directory, pg=lambda x: None):
     backup_client = Mobilebackup2Service(lockdown)
     backup_client.backup(full=full, backup_directory=backup_directory, progress_callback=pg)
     return os.path.join(backup_directory, lockdown.udid)
+
+def restore_device(db_path, backup_directory, pg=lambda x: None):
+    id = backup_get_database(backup_directory)
+    back = backup.Backup(
+        files=[
+            backup.Directory("", "AppDomainGroup-group.com.linecorp.line"),
+            backup.Directory("Library", "AppDomainGroup-group.com.linecorp.line"),
+            backup.Directory("Library/Application Support", "AppDomainGroup-group.com.linecorp.line"),
+            backup.Directory("Library/Application Support/PrivateStore", "AppDomainGroup-group.com.linecorp.line"),
+            backup.Directory("Library/Application Support/PrivateStore/" + id, "AppDomainGroup-group.com.linecorp.line"),
+            backup.ConcreteFile(
+                "Library/Application Support/PrivateStore/" + id + "/Messages/Line.sqlite",
+                "AppDomainGroup-group.com.linecorp.line",
+                contents=open(os.path.join(db_path, "Line.sqlite"), "rb").read(),
+                owner=501,
+                group=501,
+            ),
+            backup.ConcreteFile(
+                "Library/Application Support/PrivateStore/" + id + "/Messages/UnifiedGroup.sqlite",
+                "AppDomainGroup-group.com.linecorp.line",
+                contents=open(os.path.join(db_path, "UnifiedGroup.sqlite"), "rb").read(),
+                owner=501,
+                group=501,
+            ),
+            backup.ConcreteFile(
+                "Library/Application Support/PrivateStore/" + id + "/Messages/MessageExt.sqlite",
+                "AppDomainGroup-group.com.linecorp.line",
+                contents=open(os.path.join(db_path, "MessageExt.sqlite"), "rb").read(),
+                owner=501,
+                group=501,
+            ),
+        ]
+    )
+    try:
+        perform_restore(back, progress_callback=pg)
+    except PyMobileDevice3Exception as e:
+        if "Find My" in str(e):
+            return False, "尋找我的 iPhone 功能已啟用，請先關閉此功能。"
+        elif "crash_on_purpose" not in str(e):
+            return False, f"恢復失敗: {e}"
+    except NoDeviceConnectedError:
+        return False, "沒有連接的 iOS 裝置。請確保裝置已連接並解鎖。"
 
 def check_device():
     try:
