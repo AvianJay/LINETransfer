@@ -174,6 +174,14 @@ def main(page: ft.Page):
         ]
         page.update()
     
+    def convert_ios_finish():
+        convert_column.controls = [
+            ft.Text("還原成功！", text_align=ft.TextAlign.CENTER, size=30),
+            ft.Text(f"已經幫你轉換了 {str(config.converted)} 筆資料啦！", text_align=ft.TextAlign.CENTER, size=20),
+            ft.TextButton("回到主頁", on_click=go_to_home),
+        ]
+        page.update()
+    
     def convert_ios_restore(db_path):
         convert_column.controls = [
             ft.Text("還原iOS裝置", text_align=ft.TextAlign.CENTER, size=30),
@@ -192,9 +200,30 @@ def main(page: ft.Page):
                 convert_column.controls[2].content.value = p / 100
             page.update()
         print("Starting iOS restore...")
-        ios.restore_device(db_path, config.config("ios_backup_location"), on_upd)
+        status, reason = ios.restore_device(db_path, config.config("ios_backup_location"), on_upd)
+        if not status:
+            convert_ios_before_restore(db_path, reason)
         convert_column.controls[2].content.value = None
-        convert_column.controls[1].value = "還原完成！"
+        convert_ios_finish()
+
+    def convert_ios_before_restore(db_path, error=None):
+        def check_device(e):
+            e.control.disabled = True
+            page.update()
+            if ios.check_device():
+                convert_ios_restore(db_path)
+            else:
+                convert_column.controls.append(ft.Text("沒有連接到iOS裝置！", color=ft.Colors.RED_700))
+                e.control.disabled = False
+                page.update()
+        convert_column.controls = [
+            ft.Text("還原iOS裝置", text_align=ft.TextAlign.CENTER, size=30),
+            ft.Text("請先將iTunes打開以及插入你的iOS裝置。", text_align=ft.TextAlign.CENTER, size=20),
+            ft.Text("確保「尋找我的裝置」是關閉的，你可以在還原之後開啟。", text_align=ft.TextAlign.CENTER, size=20),
+        ]
+        if error:
+            convert_column.controls.append(ft.Text(error, text_align=ft.TextAlign.CENTER, color=ft.Colors.RED_700))
+        convert_column.controls.append(ft.TextButton("繼續", on_click=check_device))
         page.update()
     
     def convert_ios_converting(fp, db_path):
@@ -212,7 +241,7 @@ def main(page: ft.Page):
         try:
             c, m, r = convert.migrate_android_to_ios(fp, db_path)
             config.converted = c + m + r
-            convert_ios_restore(db_path)
+            convert_ios_before_restore(db_path)
         except:
             convert_column.controls.append(ft.Text("轉換錯誤！請重新開啟程式！", size=20, color=ft.Colors.RED_700))
             page.update()
