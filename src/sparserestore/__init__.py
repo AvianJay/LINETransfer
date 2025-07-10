@@ -8,13 +8,13 @@ from pymobiledevice3.exceptions import PyMobileDevice3Exception
 from . import backup
 from .backup import _FileMode as FileMode
 
-def perform_restore(backup: backup.Backup, reboot: bool = False):
+def perform_restore(backup: backup.Backup, reboot: bool = False, progress_callback=lambda x: None):
     with TemporaryDirectory() as backup_dir:
         backup.write_to_directory(Path(backup_dir))
             
         lockdown = create_using_usbmux()
         with Mobilebackup2Service(lockdown) as mb:
-            mb.restore(backup_dir, system=True, reboot=False, copy=False, source=".")
+            mb.restore(backup_dir, system=True, reboot=False, copy=False, source=".", progress_callback=progress_callback)
 
 def exploit_write_file(file: backup.BackupFile):
     # Exploits in use:
