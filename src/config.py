@@ -81,6 +81,6 @@ def check_update():
         app_version = app_version.strip().lower()
         if not hash == app_version:
             if res.get("workflow_runs")[0].get("status") == "completed":
-                return f"### New commit: {hash}\n\n**Full Changelog**: [{app_version}...{hash}](https://github.com/AvianJay/LINETransfer/compare/{app_version}...{hash})", f"https://nightly.link/AvianJay/TaiwanBusFlet/workflows/build/main/taiwanbusflet-{platform}.zip"
+                return f"### New commit: {hash}\n\n**Full Changelog**: [{app_version}...{hash}](https://github.com/AvianJay/LINETransfer/compare/{app_version}...{hash})", f"https://nightly.link/AvianJay/LINETransfer/workflows/build/main/linetransfer-{platform}.zip"
         return False, None
     return False, None

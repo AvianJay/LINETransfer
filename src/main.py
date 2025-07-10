@@ -538,4 +538,47 @@ def main(page: ft.Page):
     home_show_page(0)
     go_to_home()
 
+    def open_app_update_dialog(updates, data):
+        def app_update(e):
+            page.open(ft.SnackBar(
+                content=ft.Text("正在更新"),
+            ))
+            page.launch_url(data)
+        link = updates.split("](")[1].split(")")[0] if "](http" in updates else None
+        upddlg = ft.AlertDialog(
+            title=ft.Text("應用程式有新更新"),
+            content=ft.Markdown(updates),
+            actions=[
+                *( [ft.TextButton("網頁", on_click=lambda e: page.launch_url(link))] if link else [] ),
+                ft.TextButton("下次再說", on_click=lambda e: page.close(upddlg)),
+                ft.TextButton("更新", on_click=app_update),
+            ],
+        )
+        page.open(upddlg)
+    
+    try:
+        updates, data = config.check_update()
+        if updates:
+            page.update()
+            if config.config("app_update_check") == "popup":
+                open_app_update_dialog(updates, data)
+            elif config.config("app_update_check") == "notify":
+                ft.SnackBar(
+                    content=ft.Text("應用程式有新版本"),
+                    action="查看",
+                    on_action=lambda e: open_app_update_dialog(updates, data),
+                )
+        else:
+            if data:
+                page.open(ft.SnackBar(
+                    content=ft.Text("錯誤: " + data),
+                    action="確定",
+                ))
+    except Exception as e:
+        print("Failed to check app update:", str(e))
+        page.open(ft.SnackBar(
+            content=ft.Text("檢查程式更新時發生錯誤。"),
+            action="確定",
+        ))
+
 ft.app(main)
