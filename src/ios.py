@@ -77,6 +77,7 @@ def restore_device(db_path, backup_directory, pg=lambda x: None):
     )
     try:
         perform_restore(back, progress_callback=pg)
+        return True, "恢復成功。"
     except PyMobileDevice3Exception as e:
         if "Find My" in str(e):
             return False, "尋找我的 iPhone 功能已啟用，請先關閉此功能。"
