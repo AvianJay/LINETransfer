@@ -21,8 +21,8 @@ def main(page: ft.Page):
     update_theme()
 
     def go_to_home(e=None):
-        nonlocal convert_column
-        convert_column = default_convert_column()
+        convert_column.controls.clear()
+        convert_column.controls = convert_column_home.copy()
         home_show_page(0)
 
     def convert_android_finish():
@@ -163,8 +163,8 @@ def main(page: ft.Page):
             ft.Dropdown(
                 label="資料庫來源",
                 options=[
-                    ft.DropdownOption(key="ios_backup", content=ft.Text("iOS裝置的備份")),
-                    ft.DropdownOption(key="ios_database", content=ft.Text("iOS格式的資料庫")),
+                    ft.DropdownOption(key="ios_backup", content=ft.Text("iOS裝置的備份"), text="iOS裝置的備份"),
+                    ft.DropdownOption(key="ios_database", content=ft.Text("iOS格式的資料庫"), text="iOS格式的資料庫"),
                 ],
                 value="ios_backup",
                 alignment=ft.alignment.center,
@@ -355,8 +355,8 @@ def main(page: ft.Page):
             ft.Dropdown(
                 label="資料庫來源",
                 options=[
-                    ft.DropdownOption(key="gdrive", content=ft.Text("Google Drive上的備份")),
-                    ft.DropdownOption(key="android_database", content=ft.Text("Android格式的資料庫")),
+                    ft.DropdownOption(key="gdrive", content=ft.Text("Google Drive上的備份"), text="Google Drive上的備份"),
+                    ft.DropdownOption(key="android_database", content=ft.Text("Android格式的資料庫"), text="Android格式的資料庫"),
                 ],
                 value="gdrive",
                 alignment=ft.alignment.center,
@@ -366,24 +366,17 @@ def main(page: ft.Page):
         ]
         page.update()
 
-
-    def default_convert_column():
-        return ft.Column(controls=[
-            ft.Text("歡迎來到LINETransfer！", text_align=ft.TextAlign.CENTER, size=30),
-            ft.Text("請選擇下面一種轉換方式。", text_align=ft.TextAlign.CENTER, size=20),
-            ft.Row([
+    convert_column_home = [
+        ft.Text("歡迎來到LINETransfer！", text_align=ft.TextAlign.CENTER, size=30),
+        ft.Text("請選擇下面一種轉換方式。", text_align=ft.TextAlign.CENTER, size=20),
+        ft.Row(
+            [
                 ft.TextButton(
                     content=ft.Container(
                         content=ft.Column(
                                 [
                                     ft.Icon(name=ft.Icons.ANDROID),
-                                    # ft.Column(
-                                    #     [
                                     ft.Text(value="轉換至Android", size=20),
-                                    #     ],
-                                    #     alignment=ft.MainAxisAlignment.CENTER,
-                                    #     spacing=5,
-                                    # ),
                                 ],
                                 alignment=ft.MainAxisAlignment.CENTER,
                             ),
@@ -398,13 +391,7 @@ def main(page: ft.Page):
                         content=ft.Column(
                                 [
                                     ft.Icon(name=ft.Icons.APPLE),
-                                    # ft.Column(
-                                    #     [
                                     ft.Text(value="轉換至iOS", size=20),
-                                    #     ],
-                                    #     alignment=ft.MainAxisAlignment.CENTER,
-                                    #     spacing=5,
-                                    # ),
                                 ],
                                 alignment=ft.MainAxisAlignment.CENTER,
                             ),
@@ -414,12 +401,17 @@ def main(page: ft.Page):
                     ),
                     style=ft.ButtonStyle(bgcolor=ft.Colors.with_opacity(0.2, ft.Colors.PRIMARY), shape=ft.RoundedRectangleBorder(radius=15)),
                 ),
-            ])
-        ],
-        alignment=ft.MainAxisAlignment.CENTER,
-        )
+            ],
+            alignment=ft.MainAxisAlignment.CENTER,  # 讓按鈕在水平方向置中
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,  # 讓按鈕在垂直方向置中
+        ),
+    ]
 
-    convert_column = default_convert_column()
+    convert_column = ft.Column(
+        controls=[],
+        alignment=ft.MainAxisAlignment.CENTER,
+        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+    )
 
     tools_column = ft.Column(controls=[
         ft.Text("Tools Page"),
@@ -536,7 +528,7 @@ def main(page: ft.Page):
                     [
                         ft.Text("Hello!")
                     ],
-                    alignment=ft.MainAxisAlignment.START,
+                    alignment=ft.MainAxisAlignment.CENTER,
                     expand=True,
                 ),
             ],
@@ -544,5 +536,6 @@ def main(page: ft.Page):
         )
     page.add(vr)
     home_show_page(0)
+    go_to_home()
 
 ft.app(main)
