@@ -409,7 +409,7 @@ def main(page: ft.Page):
                                 alignment=ft.MainAxisAlignment.CENTER,
                             ),
                         padding=10,
-                        on_click=lambda e: page.open(ft.SnackBar(ft.Text("WIP"))),
+                        on_click=convert_ios,
                         alignment=ft.alignment.center,
                     ),
                     style=ft.ButtonStyle(bgcolor=ft.Colors.with_opacity(0.2, ft.Colors.PRIMARY), shape=ft.RoundedRectangleBorder(radius=15)),
