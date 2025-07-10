@@ -80,9 +80,9 @@ def restore_device(db_path, backup_directory, pg=lambda x: None):
         return True, "恢復成功。"
     except PyMobileDevice3Exception as e:
         if "Find My" in str(e):
-            return False, "尋找我的 iPhone 功能已啟用，請先關閉此功能。"
-        elif "crash_on_purpose" not in str(e):
-            return False, f"恢復失敗: {e}"
+            return False, "尋找我的裝置已啟用，請先關閉。"
+        # elif "crash_on_purpose" not in str(e):
+        #     return False, f"恢復失敗: {e}"
     except NoDeviceConnectedError:
         return False, "沒有連接的 iOS 裝置。請確保裝置已連接並解鎖。"
 
