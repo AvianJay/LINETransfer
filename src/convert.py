@@ -378,7 +378,8 @@ def convert_chathistory_to_zmessage(row, chat_lookup, zuser_lookup, z_ent=5):
     if chat_pk is None:
         return None
     sid = row["server_id"]
-    sid = int(sid) if sid else None
+    try: sid = int(sid)
+    except: sid = None
     zt = clean(row["content"])
     zt = "\t" if not zt else zt
     return {

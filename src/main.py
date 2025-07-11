@@ -332,6 +332,8 @@ def main(page: ft.Page):
                 page.update()
                 time.sleep(10)
                 convert_ios_gdrive_download(None)
+                return
+        print(fn)
         fp = os.path.join("databases", "gdrive", fn)
         if not os.path.exists(fp):
             convert_column.controls.append(ft.Text("下載失敗！請確保您已經備份了！", text_align=ft.TextAlign.CENTER, color=ft.Colors.RED_700))
@@ -343,7 +345,7 @@ def main(page: ft.Page):
         def on_result(e):
             # verify
             f = e.files[0].path if e.files else "NON-EXIST-FILE"
-            print(e.files[0].path if e.files else "No files selected")
+            print(f if e.files else "No files selected")
             if not os.path.exists(f):
                 convert_column.controls.append(ft.Text("選擇的檔案不是正確的！", color=ft.Colors.RED_700))
                 page.update()
@@ -375,7 +377,7 @@ def main(page: ft.Page):
                     icon=ft.Icons.FILE_OPEN,
                     on_click=lambda e: file_picker.pick_files(dialog_title="選擇sqlite檔案...", file_type=ft.FilePickerFileType.CUSTOM, allowed_extensions=["sqlite"]),
                 ),
-                ft.TextButton("繼續", on_click=lambda e:convert_ios_get_backup(file_picker.result.path), disabled=True),
+                ft.TextButton("繼續", on_click=lambda e:convert_ios_get_backup(file_picker.result.files[0].path), disabled=True),
             ]
         page.update()
     
