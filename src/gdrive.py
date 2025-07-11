@@ -264,7 +264,8 @@ def upload_file(email, filepath, filename):
     json.dump(auths, open(".googleauth.json", "w"))
     service = get_gdrive_service(auths[email]["gdrive"])
     gz_path = filepath + ".gz"
-    os.remove(gz_path)
+    try: os.remove(gz_path)
+    except: pass
     with open(filepath, "rb") as f_in, gzip.open(gz_path, "wb") as f_out:
         shutil.copyfileobj(f_in, f_out)
 

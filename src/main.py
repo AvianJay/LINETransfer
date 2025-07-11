@@ -4,6 +4,8 @@ import ios
 import convert
 import config
 import os
+import time
+import traceback
 
 
 def main(page: ft.Page):
@@ -78,13 +80,16 @@ def main(page: ft.Page):
                 content=ft.ProgressRing(scale=5),
                 alignment=ft.alignment.center,
             ),
+            ft.Text("正在啟動備份。", text_align=ft.TextAlign.CENTER),
         ]
         page.update()
         def on_upd(p):
             if p == 100 or p == 0:
                 convert_column.controls[2].content.value = None
+                convert_column.controls[3].value = "正在啟動備份。" if p == 0 else "備份完成，善後中。"
             else:
                 convert_column.controls[2].content.value = p / 100
+                convert_column.controls[3].value = str(p) + "%"
             page.update()
         print("Starting iOS backup...")
         bd = ios.backup_device(config.config("ios_backup_location"), on_upd)
@@ -191,13 +196,16 @@ def main(page: ft.Page):
                 content=ft.ProgressRing(scale=5),
                 alignment=ft.alignment.center,
             ),
+            ft.Text("正在啟動還原程序。", text_align=ft.TextAlign.CENTER),
         ]
         page.update()
         def on_upd(p):
             if p == 100 or p == 0:
                 convert_column.controls[2].content.value = None
+                convert_column.controls[3].value = "正在啟動還原程序。" if p == 0 else "還原完成，善後中。"
             else:
                 convert_column.controls[2].content.value = p / 100
+                convert_column.controls[3].value = str(p) + "%"
             page.update()
         print("Starting iOS restore...")
         status, reason = ios.restore_device(db_path, config.config("ios_backup_location"), on_upd)
@@ -242,7 +250,9 @@ def main(page: ft.Page):
             c, m, r = convert.migrate_android_to_ios(fp, db_path)
             config.converted = c + m + r
             convert_ios_before_restore(db_path)
-        except:
+        except Exception as e:
+            print("ERROR:", str(e))
+            traceback.print_exc()
             convert_column.controls.append(ft.Text("轉換錯誤！請重新開啟程式！", size=20, color=ft.Colors.RED_700))
             page.update()
     
@@ -255,23 +265,35 @@ def main(page: ft.Page):
                 content=ft.ProgressRing(scale=5),
                 alignment=ft.alignment.center,
             ),
+            ft.Text("正在啟動備份。", text_align=ft.TextAlign.CENTER),
         ]
         page.update()
         def on_upd(p):
             if p == 100 or p == 0:
                 convert_column.controls[2].content.value = None
+                convert_column.controls[3].value = "正在啟動備份。" if p == 0 else "備份完成，善後中。"
             else:
                 convert_column.controls[2].content.value = p / 100
+                convert_column.controls[3].value = str(p) + "%"
             page.update()
-        print("Starting iOS backup...")
-        bd = ios.backup_device(config.config("ios_backup_location"), on_upd)
-        convert_column.controls[2].content.value = None
-        convert_column.controls[1].value = "正在取得資料庫..."
-        page.update()
-        ios.backup_get_database(bd, os.path.join("databases", "iOS"))
-        convert_ios_converting(fp, os.path.join("databases", "iOS"))
+        try:
+            print("Starting iOS backup...")
+            bd = ios.backup_device(config.config("ios_backup_location"), on_upd)
+            convert_column.controls[2].content.value = None
+            convert_column.controls[1].value = "正在取得資料庫..."
+            page.update()
+            try: os.rmdir(os.path.join("databases", "iOS"))
+            except: pass
+            try: os.mkdir(os.path.join("databases", "iOS"))
+            except: pass
+            ios.backup_get_database(bd, os.path.join("databases", "iOS"))
+            convert_ios_converting(fp, os.path.join("databases", "iOS"))
+        except Exception as e:
+            print("Backup ERROR:", e)
+            traceback.print_exc()
+            convert_ios_get_backup(fp, "備份或獲取資料庫時發生錯誤。")
 
-    def convert_ios_get_backup(fp):
+    def convert_ios_get_backup(fp, error=None):
         def check_device(e):
             e.control.disabled = True
             page.update()
@@ -287,6 +309,9 @@ def main(page: ft.Page):
             ft.Text("將iTunes打開以及插入你的iOS裝置。", size=15),
             ft.TextButton("繼續", on_click=check_device),
         ]
+        if error:
+            convert_column.controls.append(ft.Text(error, size=15, color=ft.Colors.RED_700))
+        page.update()
 
     def convert_ios_gdrive_download(e):
         convert_column.controls = [
@@ -299,7 +324,14 @@ def main(page: ft.Page):
             ),
         ]
         page.update()
-        fn = gdrive.download(config.config("google_email"), True)
+        try:
+            fn = gdrive.download(config.config("google_email"), True)
+        except Exception as e:
+            if "Quota exceeded" in str(e):
+                convert_column.controls.append(ft.Text("被Google限制！10秒後重試。", text_align=ft.TextAlign.CENTER, color=ft.Colors.RED_700))
+                page.update()
+                time.sleep(10)
+                convert_ios_gdrive_download(None)
         fp = os.path.join("databases", "gdrive", fn)
         if not os.path.exists(fp):
             convert_column.controls.append(ft.Text("下載失敗！請確保您已經備份了！", text_align=ft.TextAlign.CENTER, color=ft.Colors.RED_700))
@@ -310,9 +342,9 @@ def main(page: ft.Page):
     def convert_ios_selected(e):
         def on_result(e):
             # verify
-            f = e.files[0].name if e.files else None
+            f = e.files[0].path if e.files else "NON-EXIST-FILE"
             print(e.files[0].path if e.files else "No files selected")
-            if not os.path.exists(os.path.join(e.path, f)):
+            if not os.path.exists(f):
                 convert_column.controls.append(ft.Text("選擇的檔案不是正確的！", color=ft.Colors.RED_700))
                 page.update()
                 return
@@ -339,11 +371,11 @@ def main(page: ft.Page):
                 ft.Text("選擇Android資料庫", size=30),
                 ft.Text("請選擇資料庫。", size=20),
                 ft.ElevatedButton(
-                    "選擇資料夾...",
-                    icon=ft.Icons.FOLDER_OPEN,
+                    "選擇檔案...",
+                    icon=ft.Icons.FILE_OPEN,
                     on_click=lambda e: file_picker.pick_files(dialog_title="選擇sqlite檔案...", file_type=ft.FilePickerFileType.CUSTOM, allowed_extensions=["sqlite"]),
                 ),
-                ft.TextButton("繼續", on_click=lambda e:convert_ios_converting(file_picker.result.path), disabled=True),
+                ft.TextButton("繼續", on_click=lambda e:convert_ios_get_backup(file_picker.result.path), disabled=True),
             ]
         page.update()
     
