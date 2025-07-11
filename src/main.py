@@ -187,7 +187,7 @@ def main(page: ft.Page):
         ]
         page.update()
     
-    def convert_ios_restore(db_path):
+    def convert_ios_restore(db_path, bd):
         convert_column.controls = [
             ft.Text("還原iOS裝置", text_align=ft.TextAlign.CENTER, size=30),
             ft.Text("正在還原iOS裝置...", text_align=ft.TextAlign.CENTER, size=20),
@@ -208,18 +208,18 @@ def main(page: ft.Page):
                 convert_column.controls[3].value = str(p) + "%"
             page.update()
         print("Starting iOS restore...")
-        status, reason = ios.restore_device(db_path, config.config("ios_backup_location"), on_upd)
+        status, reason = ios.restore_device(db_path, bd, on_upd)
         if not status:
-            convert_ios_before_restore(db_path, reason)
+            convert_ios_before_restore(db_path, bd, reason)
         convert_column.controls[2].content.value = None
         convert_ios_finish()
 
-    def convert_ios_before_restore(db_path, error=None):
+    def convert_ios_before_restore(db_path, bd, error=None):
         def check_device(e):
             e.control.disabled = True
             page.update()
             if ios.check_device():
-                convert_ios_restore(db_path)
+                convert_ios_restore(db_path, bd)
             else:
                 convert_column.controls.append(ft.Text("沒有連接到iOS裝置！", color=ft.Colors.RED_700))
                 e.control.disabled = False
@@ -234,7 +234,7 @@ def main(page: ft.Page):
         convert_column.controls.append(ft.TextButton("繼續", on_click=check_device))
         page.update()
     
-    def convert_ios_converting(fp, db_path):
+    def convert_ios_converting(fp, db_path, bd):
         if os.path.exists(os.path.join("databases", "gdrive_converted.sqlite")): os.remove(os.path.join("databases", "gdrive_converted.sqlite"))
         convert_column.controls = [
             ft.Text("轉換程序", size=30),
@@ -249,7 +249,7 @@ def main(page: ft.Page):
         try:
             c, m, r = convert.migrate_android_to_ios(fp, db_path)
             config.converted = c + m + r
-            convert_ios_before_restore(db_path)
+            convert_ios_before_restore(db_path, bd)
         except Exception as e:
             print("ERROR:", str(e))
             traceback.print_exc()
@@ -287,7 +287,7 @@ def main(page: ft.Page):
             try: os.mkdir(os.path.join("databases", "iOS"))
             except: pass
             ios.backup_get_database(bd, os.path.join("databases", "iOS"))
-            convert_ios_converting(fp, os.path.join("databases", "iOS"))
+            convert_ios_converting(fp, os.path.join("databases", "iOS"), bd)
         except Exception as e:
             print("Backup ERROR:", e)
             traceback.print_exc()
