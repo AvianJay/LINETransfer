@@ -291,7 +291,10 @@ def main(page: ft.Page):
         except Exception as e:
             print("Backup ERROR:", e)
             traceback.print_exc()
-            convert_ios_get_backup(fp, "備份或獲取資料庫時發生錯誤。")
+            if "Device locked" in str(e):
+                convert_ios_get_backup(fp, "請解鎖裝置。")
+            else:
+                convert_ios_get_backup(fp, "備份或獲取資料庫時發生錯誤。")
 
     def convert_ios_get_backup(fp, error=None):
         def check_device(e):
