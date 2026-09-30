@@ -16,7 +16,8 @@ dependencies = [
   "flet[all]==0.28.3",
   "requests",
   # 49 之後沒有 macOS x86_64 的 wheel，flet build macos 需要 universal
-  "cryptography<49",
+  # 不能寫成 <49：Windows 上 flet 透過 dart.bat 執行，cmd 會把 < 當成重新導向
+  "cryptography~=48.0",
 ]
 
 [tool.flet]
