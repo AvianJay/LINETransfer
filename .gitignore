@@ -199,6 +199,12 @@ cython_debug/
 # downloaded things
 jp.naver.line*
 *.sqlite*
+*.db
+
+# local samples / test output (real chat data, never commit)
+samples/
+test_out/
+analysis*.txt
 
 # flet
 storage/
