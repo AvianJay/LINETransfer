@@ -1,13 +1,12 @@
 import os
 import json
 import requests
-import flet as ft
-import threading
 
 # info
 app_version = "0.0.1"
 config_version = 2
 update_channel = "dev"
+repo = "AvianJay/LINETransfer"
 
 # some global variables
 converted = None
@@ -25,15 +24,20 @@ default_config = {
 config_path = "config.json"
 _config = None
 
+def _save():
+    with open(config_path, "w") as f:
+        json.dump(_config, f)
+
 try:
     if os.path.exists(config_path):
-        _config = json.load(open(config_path, "r"))
+        with open(config_path, "r") as f:
+            _config = json.load(f)
         # Todo: verify
         if not isinstance(_config, dict):
             print("Config file is not a valid JSON object, resetting to default config.")
             _config = default_config.copy()
         for key in _config.keys():
-            if not isinstance(_config[key], type(default_config[key])):
+            if key in default_config and not isinstance(_config[key], type(default_config[key])):
                 print(f"Config key '{key}' has an invalid type, resetting to default value.")
                 _config[key] = default_config[key]
         if "config_version" not in _config:
@@ -41,10 +45,10 @@ try:
             _config = default_config.copy()
     else:
         _config = default_config.copy()
-        json.dump(_config, open(config_path, "w"))
+        _save()
 except ValueError:
     _config = default_config.copy()
-    json.dump(_config, open(config_path, "w"))
+    _save()
 
 if _config.get("config_version", 0) < config_version:
     print("Updating config file from version", _config.get("config_version", 0), "to version", config_version)
@@ -53,7 +57,7 @@ if _config.get("config_version", 0) < config_version:
             _config[k] = default_config[k]
     _config["config_version"] = config_version
     print("Saving...")
-    json.dump(_config, open(config_path, "w"))
+    _save()
     print("Done.")
 
 def config(key, value=None, mode="r"):
@@ -61,7 +65,7 @@ def config(key, value=None, mode="r"):
         return _config.get(key)
     elif mode == "w":
         _config[key] = value
-        json.dump(_config, open(config_path, "w"))
+        _save()
         return True
     else:
         raise ValueError(f"Invalid mode: {mode}")
@@ -70,17 +74,19 @@ def config(key, value=None, mode="r"):
 def check_update():
     global app_version
     if update_channel == "nightly":
-        workflows_url = "https://api.github.com/repos/AvianJay/LINETransfer/actions/workflows"
-        res = requests.get(workflows_url).json()
-        workflow_url = next((s["url"] for s in res.get("workflows") if s["name"] == "Build"), None)
+        workflows_url = f"https://api.github.com/repos/{repo}/actions/workflows"
+        res = requests.get(workflows_url, timeout=10).json()
+        workflow_url = next((s["url"] for s in res.get("workflows", []) if s["name"] == "Build"), None)
         if not workflow_url:
             return False, "Workflow not found"
-        workflow_url += "/runs?per_page=1"
-        res = requests.get(workflow_url).json()
-        hash = res.get("workflow_runs")[0].get("head_sha")[0:7].strip().lower()
+        # nightly.link 提供的是 main 上最新一次成功的 build
+        workflow_url += "/runs?branch=main&status=success&per_page=1"
+        runs = requests.get(workflow_url, timeout=10).json().get("workflow_runs")
+        if not runs:
+            return False, None
+        hash = runs[0].get("head_sha")[0:7].strip().lower()
         app_version = app_version.strip().lower()
         if not hash == app_version:
-            if res.get("workflow_runs")[0].get("status") == "completed":
-                return f"### New commit: {hash}\n\n**Full Changelog**: [{app_version}...{hash}](https://github.com/AvianJay/LINETransfer/compare/{app_version}...{hash})", f"https://nightly.link/AvianJay/LINETransfer/workflows/build/main/linetransfer-{platform}.zip"
+            return f"### New commit: {hash}\n\n**Full Changelog**: [{app_version}...{hash}](https://github.com/{repo}/compare/{app_version}...{hash})", f"https://nightly.link/{repo}/workflows/build/main/linetransfer-{platform}.zip"
         return False, None
     return False, None
