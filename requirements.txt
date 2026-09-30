@@ -5,3 +5,4 @@ pyiosbackup
 selenium~=4.34.0
 flet[all]==0.28.3
 requests
+cryptography<49

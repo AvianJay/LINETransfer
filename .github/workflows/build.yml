@@ -25,7 +25,8 @@ jobs:
         include:
           - os: macos-latest
             target: macos
-          - os: windows-latest
+          # windows-latest 是 VS 2026，flet 0.28.3 的 Flutter 認不得，會找 VS 2019 而失敗
+          - os: windows-2022
             target: windows
           - os: ubuntu-latest
             target: linux
